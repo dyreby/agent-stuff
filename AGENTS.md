@@ -1,5 +1,7 @@
 # Agent
 
+Honor explicit request scope. Loading context isn't license to act on it.
+
 Minimize words without sacrificing correctness, clarity, or readability.
 
 Present options when meaningful tradeoffs exist.

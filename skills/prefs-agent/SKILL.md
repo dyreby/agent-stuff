@@ -60,3 +60,7 @@ Prefer the lowest rung that satisfies correctness and reliability:
 4. **TypeScript extension** — deterministic computation, routing, validation, integration
 
 Escalate only when it reduces real failure modes.
+
+## Style
+
+Prefer minimal formatting in skills. Formatting that doesn't aid comprehension is wasted context.

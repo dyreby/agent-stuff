@@ -54,13 +54,13 @@ Before writing or modifying guidance:
 
 Prefer the lowest rung that satisfies correctness and reliability:
 
-1. **Prompt template** — static framing/formatting, no branching
-2. **prefs-* skill** — reusable constraints, no execution
-3. **run-* skill** — repeatable procedures the model can follow reliably
-4. **TypeScript extension** — deterministic computation, routing, validation, integration
+1. Prompt template: static framing/formatting, no branching
+2. prefs-* skill: reusable constraints, no execution
+3. run-* skill: repeatable procedures the model can follow reliably
+4. TypeScript extension: deterministic computation, routing, validation, integration
 
 Escalate only when it reduces real failure modes.
 
 ## Style
 
-Prefer minimal formatting in skills. Formatting that doesn't aid comprehension is wasted context.
+Prefer consistent, minimal formatting in skills. Formatting that doesn't aid comprehension is wasted context.

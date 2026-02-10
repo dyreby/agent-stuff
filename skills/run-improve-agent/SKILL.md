@@ -7,7 +7,8 @@ description: Evolve agent guidance artifacts. Use when adding, refining, or fixi
 
 ## Aim
 
-Improve alignment between agent behavior and user expectations.
+- Align agent behavior with user expectations
+- Use minimum context needed to achieve that alignment
 
 ## Preconditions
 
@@ -24,6 +25,7 @@ Improve alignment between agent behavior and user expectations.
 
 ## Guidelines
 
+- Evaluate options against the Aim above; prefer wording that better aligns agent behavior with user expectations
 - Prefer durable improvements over one-off fixes
 - Prefer small, local edits; keep rules composable
 - Make scope explicit; justify placement

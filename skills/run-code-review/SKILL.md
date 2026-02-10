@@ -7,7 +7,7 @@ description: Procedure for reviewing code changes.
 
 ## Goal
 
-General-purpose code review procedure that works across contexts: PRs, staged commits, local diffs. Tooling (bash commands, scripts) will evolve to gather context automatically based on review type.
+General-purpose code review procedure that works across contexts: PRs, staged commits, local diffs.
 
 ## Preconditions
 

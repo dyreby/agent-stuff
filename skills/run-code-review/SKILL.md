@@ -5,6 +5,10 @@ description: Procedure for reviewing code changes.
 
 # Review
 
+## Goal
+
+General-purpose code review procedure that works across contexts: PRs, staged commits, local diffs. Tooling (bash commands, scripts) will evolve to gather context automatically based on review type.
+
 ## Preconditions
 
 - Load prefs-code-review for rubric
@@ -12,6 +16,6 @@ description: Procedure for reviewing code changes.
 
 ## Procedure
 
-1. Gather context: PR metadata, diff, and existing reviews
+1. Gather context: diff, relevant metadata, and any prior review state
 2. Analyze: apply rubric
-3. Propose action: approve (with or without comment), or request changes; draft comment if warranted
+3. Propose action: summarize findings and recommend next steps based on context

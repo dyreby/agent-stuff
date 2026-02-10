@@ -10,9 +10,14 @@ description: Evolve agent guidance artifacts. Use when adding, refining, or fixi
 - Align agent behavior with user expectations
 - Use minimum context needed to achieve that alignment
 
+## Context
+
+Agent files live in `~/repos/dyreby/agent-stuff`.
+
 ## Preconditions
 
 - Read `prefs-agent` for architecture principles and taxonomy
+- Verify repo is clean before editing
 
 ## Procedure
 

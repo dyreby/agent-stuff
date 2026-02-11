@@ -16,13 +16,15 @@
  *   pi -e ./pi-extensions/gh-agent.ts --gh-only # GitHub-only: sandboxed temp workspace
  *
  * Tools (all modes):
- *   gh_issue_list    - List issues
- *   gh_issue_read    - Get issue details + comments
- *   gh_issue_comment - Post comment on issue
- *   gh_pr_list       - List pull requests
- *   gh_pr_read       - Get PR details
- *   gh_pr_diff       - Get PR diff
- *   gh_pr_comment    - Post comment on PR
+ *   gh_issue_list        - List issues
+ *   gh_issue_read        - Get issue details + comments
+ *   gh_issue_comment     - Post comment on issue
+ *   gh_pr_list           - List pull requests
+ *   gh_pr_read           - Get PR details
+ *   gh_pr_diff           - Get PR diff
+ *   gh_pr_comment        - Post comment on PR
+ *   gh_pr_request_review - Request reviewers on a PR
+ *   gh_pr_review         - Submit a review (approve, request changes, comment)
  *
  * Tools (default mode only):
  *   gh_pr_create     - Create PR from branch
@@ -101,6 +103,26 @@ const PrCommentSchema = Type.Object({
   body: CommentBody,
 });
 
+const PrRequestReviewSchema = Type.Object({
+  repo: RepoParam,
+  number: PrNumber,
+  reviewers: Type.Array(Type.String({ description: "GitHub username" }), {
+    description: "List of GitHub usernames to request review from",
+    minItems: 1,
+  }),
+});
+
+const PrReviewSchema = Type.Object({
+  repo: RepoParam,
+  number: PrNumber,
+  event: StringEnum(["approve", "request_changes", "comment"] as const, {
+    description: "Review action: approve, request_changes, or comment",
+  }),
+  body: Type.Optional(Type.String({
+    description: "Review body (required for request_changes and comment)",
+  })),
+});
+
 const FileReadSchema = Type.Object({
   repo: RepoParam,
   path: Type.String({ description: "File path in repository" }),
@@ -145,6 +167,8 @@ export type PrReadInput = Static<typeof PrReadSchema>;
 export type PrDiffInput = Static<typeof PrDiffSchema>;
 export type PrCreateInput = Static<typeof PrCreateSchema>;
 export type PrCommentInput = Static<typeof PrCommentSchema>;
+export type PrRequestReviewInput = Static<typeof PrRequestReviewSchema>;
+export type PrReviewInput = Static<typeof PrReviewSchema>;
 export type FileReadInput = Static<typeof FileReadSchema>;
 export type CloneInput = Static<typeof CloneSchema>;
 export type TmpReadInput = Static<typeof TmpReadSchema>;
@@ -261,6 +285,7 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
       pi.setActiveTools([
         "gh_issue_list", "gh_issue_read", "gh_issue_comment",
         "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_comment",
+        "gh_pr_request_review", "gh_pr_review",
         "gh_file_read", "gh_clone",
         "tmp_read", "tmp_write", "tmp_exec", "tmp_list",
       ]);
@@ -400,6 +425,68 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
 
       return ghResultText(result, `Comment posted on PR #${params.number}`, {
         repo: params.repo, number: params.number,
+      });
+    },
+  });
+
+  pi.registerTool({
+    name: "gh_pr_request_review",
+    label: "Request PR Review",
+    description: "Request review from one or more GitHub users on a pull request",
+    parameters: PrRequestReviewSchema,
+    async execute(_id, params: PrRequestReviewInput, signal) {
+      const args = [
+        "pr", "edit", String(params.number), "-R", params.repo,
+      ];
+      for (const reviewer of params.reviewers) {
+        args.push("--add-reviewer", reviewer);
+      }
+
+      const result = await gh(pi, args, signal);
+
+      return ghResultText(result, `Review requested from: ${params.reviewers.join(", ")}`, {
+        repo: params.repo, number: params.number, reviewers: params.reviewers,
+      });
+    },
+  });
+
+  pi.registerTool({
+    name: "gh_pr_review",
+    label: "Submit PR Review",
+    description: "Submit a review on a pull request (approve, request changes, or comment)",
+    parameters: PrReviewSchema,
+    async execute(_id, params: PrReviewInput, signal) {
+      // Body is required for request_changes and comment
+      if ((params.event === "request_changes" || params.event === "comment") && !params.body) {
+        return {
+          content: [{ type: "text", text: `Error: body is required for ${params.event} reviews` }],
+          isError: true,
+        };
+      }
+
+      const eventFlag = {
+        approve: "--approve",
+        request_changes: "--request-changes",
+        comment: "--comment",
+      }[params.event];
+
+      const args = [
+        "pr", "review", String(params.number), "-R", params.repo, eventFlag,
+      ];
+      if (params.body) {
+        args.push("-b", params.body);
+      }
+
+      const result = await gh(pi, args, signal);
+
+      const actionText = {
+        approve: "Approved",
+        request_changes: "Requested changes on",
+        comment: "Commented on",
+      }[params.event];
+
+      return ghResultText(result, `${actionText} PR #${params.number}`, {
+        repo: params.repo, number: params.number, event: params.event,
       });
     },
   });

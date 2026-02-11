@@ -3,7 +3,7 @@ name: run-code-review
 description: Procedure for reviewing code changes.
 ---
 
-Assumes skill: prefs-code-review
+Assumes skill: prefs-code-review, prefs-git
 
 ## Goal
 

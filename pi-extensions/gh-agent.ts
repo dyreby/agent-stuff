@@ -34,6 +34,10 @@
  *   tmp_write        - Write file in sandbox
  *   tmp_exec         - Execute command in sandbox
  *   tmp_list         - List directory in sandbox
+ *
+ * Security note: tmp_exec commands run with cwd locked to the sandbox, but can
+ * still access paths outside via absolute paths (e.g., /etc/passwd). This is
+ * intentional to allow running tests, builds, and other development commands.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -216,19 +220,17 @@ async function gh(
 
 // --- Sandbox Helpers ---
 
-let sandboxDir: string | null = null;
+let sandboxPromise: Promise<string> | null = null;
 
 async function getSandboxDir(): Promise<string> {
-  if (!sandboxDir) {
-    sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-gh-sandbox-"));
-  }
-  return sandboxDir;
+  return sandboxPromise ??= fs.mkdtemp(path.join(os.tmpdir(), "pi-gh-sandbox-"));
 }
 
 async function cleanupSandbox(): Promise<void> {
-  if (sandboxDir) {
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-    sandboxDir = null;
+  if (sandboxPromise) {
+    const dir = await sandboxPromise;
+    await fs.rm(dir, { recursive: true, force: true });
+    sandboxPromise = null;
   }
 }
 
@@ -455,15 +457,18 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
       }
 
       // Checkout specific ref if requested
+      let refWarning = "";
       if (params.ref) {
-        const checkoutResult = await pi.exec("git", ["-C", targetDir, "fetch", "origin", params.ref], { signal });
-        if (checkoutResult.code === 0) {
+        const fetchResult = await pi.exec("git", ["-C", targetDir, "fetch", "origin", params.ref], { signal });
+        if (fetchResult.code === 0) {
           await pi.exec("git", ["-C", targetDir, "checkout", params.ref], { signal });
+        } else {
+          refWarning = ` (warning: could not checkout ref '${params.ref}')`;
         }
       }
 
       return {
-        content: [{ type: "text", text: `Cloned ${params.repo} to ${repoName}/` }],
+        content: [{ type: "text", text: `Cloned ${params.repo} to ${repoName}/${refWarning}` }],
         details: { repo: params.repo, path: repoName, ref: params.ref },
       };
     },

@@ -161,12 +161,11 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
     default: false,
   });
 
-  const ghOnly = pi.getFlag("--gh-only");
-
-  // Apply tool restrictions on session start
+  // Apply tool restrictions on session start (flag must be read here, not at load time)
   pi.on("session_start", async (_event, ctx) => {
+    const ghOnly = pi.getFlag("gh-only");
     if (ghOnly) {
-      // Get all GitHub tools we're registering
+      // GitHub-only tools (no local filesystem access)
       const ghTools = [
         "gh_issue_list",
         "gh_issue_read",
@@ -393,44 +392,42 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
     },
   });
 
-  // gh_pr_create - only in default mode (needs local git)
-  if (!ghOnly) {
-    pi.registerTool({
-      name: "gh_pr_create",
-      label: "Create PR",
-      description: "Create a pull request from a branch",
-      parameters: PrCreateSchema,
-      async execute(_toolCallId, params: PrCreateInput, signal) {
-        const args = [
-          "pr",
-          "create",
-          "-R",
-          params.repo,
-          "-t",
-          params.title,
-          "-b",
-          params.body,
-          "-H",
-          params.head,
-          "-B",
-          params.base,
-        ];
+  // gh_pr_create - excluded from gh-only mode via setActiveTools (needs local git)
+  pi.registerTool({
+    name: "gh_pr_create",
+    label: "Create PR",
+    description: "Create a pull request from a branch",
+    parameters: PrCreateSchema,
+    async execute(_toolCallId, params: PrCreateInput, signal) {
+      const args = [
+        "pr",
+        "create",
+        "-R",
+        params.repo,
+        "-t",
+        params.title,
+        "-b",
+        params.body,
+        "-H",
+        params.head,
+        "-B",
+        params.base,
+      ];
 
-        const result = await ghAgent(pi, args, signal);
-        if (result.code !== 0) {
-          return {
-            content: [{ type: "text", text: `Error: ${result.stderr}` }],
-            isError: true,
-          };
-        }
-
+      const result = await ghAgent(pi, args, signal);
+      if (result.code !== 0) {
         return {
-          content: [{ type: "text", text: `PR created: ${result.stdout}` }],
-          details: { repo: params.repo, head: params.head, base: params.base },
+          content: [{ type: "text", text: `Error: ${result.stderr}` }],
+          isError: true,
         };
-      },
-    });
-  }
+      }
+
+      return {
+        content: [{ type: "text", text: `PR created: ${result.stdout}` }],
+        details: { repo: params.repo, head: params.head, base: params.base },
+      };
+    },
+  });
 
   pi.registerTool({
     name: "gh_pr_comment",
@@ -463,41 +460,39 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
     },
   });
 
-  // --- File Read (gh-only mode) ---
+  // --- File Read (available in gh-only mode via setActiveTools) ---
 
-  if (ghOnly) {
-    pi.registerTool({
-      name: "gh_file_read",
-      label: "Read File from GitHub",
-      description: "Fetch file content from GitHub (not local filesystem)",
-      parameters: FileReadSchema,
-      async execute(_toolCallId, params: FileReadInput, signal) {
-        const args = [
-          "api",
-          `/repos/${params.repo}/contents/${params.path}`,
-          "--jq",
-          ".content",
-        ];
-        if (params.ref) {
-          args.push("-f", `ref=${params.ref}`);
-        }
+  pi.registerTool({
+    name: "gh_file_read",
+    label: "Read File from GitHub",
+    description: "Fetch file content from GitHub (not local filesystem)",
+    parameters: FileReadSchema,
+    async execute(_toolCallId, params: FileReadInput, signal) {
+      const args = [
+        "api",
+        `/repos/${params.repo}/contents/${params.path}`,
+        "--jq",
+        ".content",
+      ];
+      if (params.ref) {
+        args.push("-f", `ref=${params.ref}`);
+      }
 
-        const result = await ghAgent(pi, args, signal);
-        if (result.code !== 0) {
-          return {
-            content: [{ type: "text", text: `Error: ${result.stderr}` }],
-            isError: true,
-          };
-        }
-
-        // Decode base64 content
-        const decoded = Buffer.from(result.stdout.trim(), "base64").toString("utf-8");
-
+      const result = await ghAgent(pi, args, signal);
+      if (result.code !== 0) {
         return {
-          content: [{ type: "text", text: decoded }],
-          details: { repo: params.repo, path: params.path, ref: params.ref },
+          content: [{ type: "text", text: `Error: ${result.stderr}` }],
+          isError: true,
         };
-      },
-    });
-  }
+      }
+
+      // Decode base64 content
+      const decoded = Buffer.from(result.stdout.trim(), "base64").toString("utf-8");
+
+      return {
+        content: [{ type: "text", text: decoded }],
+        details: { repo: params.repo, path: params.path, ref: params.ref },
+      };
+    },
+  });
 }

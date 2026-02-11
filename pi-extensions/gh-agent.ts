@@ -19,6 +19,7 @@
  *   gh_issue_list        - List issues
  *   gh_issue_read        - Get issue details + comments
  *   gh_issue_comment     - Post comment on issue
+ *   gh_issue_create      - Create a new issue
  *   gh_pr_list           - List pull requests
  *   gh_pr_read           - Get PR details
  *   gh_pr_diff           - Get PR diff
@@ -71,6 +72,12 @@ const IssueCommentSchema = Type.Object({
   repo: RepoParam,
   number: IssueNumber,
   body: CommentBody,
+});
+
+const IssueCreateSchema = Type.Object({
+  repo: RepoParam,
+  title: Type.String({ description: "Issue title" }),
+  body: Type.Optional(Type.String({ description: "Issue body (markdown)" })),
 });
 
 const PrListSchema = Type.Object({
@@ -162,6 +169,7 @@ const TmpListSchema = Type.Object({
 export type IssueListInput = Static<typeof IssueListSchema>;
 export type IssueReadInput = Static<typeof IssueReadSchema>;
 export type IssueCommentInput = Static<typeof IssueCommentSchema>;
+export type IssueCreateInput = Static<typeof IssueCreateSchema>;
 export type PrListInput = Static<typeof PrListSchema>;
 export type PrReadInput = Static<typeof PrReadSchema>;
 export type PrDiffInput = Static<typeof PrDiffSchema>;
@@ -283,7 +291,7 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     if (pi.getFlag("gh-only")) {
       pi.setActiveTools([
-        "gh_issue_list", "gh_issue_read", "gh_issue_comment",
+        "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
         "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_comment",
         "gh_pr_request_review", "gh_pr_review",
         "gh_file_read", "gh_clone",
@@ -343,6 +351,25 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
 
       return ghResultText(result, `Comment posted on issue #${params.number}`, {
         repo: params.repo, number: params.number,
+      });
+    },
+  });
+
+  pi.registerTool({
+    name: "gh_issue_create",
+    label: "Create Issue",
+    description: "Create a new issue in a GitHub repository",
+    parameters: IssueCreateSchema,
+    async execute(_id, params: IssueCreateInput, signal) {
+      const args = ["issue", "create", "-R", params.repo, "-t", params.title];
+      if (params.body) {
+        args.push("-b", params.body);
+      }
+
+      const result = await gh(pi, args, signal);
+
+      return ghResultText(result, `Issue created: ${result.stdout}`, {
+        repo: params.repo,
       });
     },
   });

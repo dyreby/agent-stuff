@@ -3,8 +3,6 @@ name: prefs-coding
 description: Cross-cutting coding preferences. Use when working on any codebase.
 ---
 
-# Coding Preferences
-
 ## Design
 
 - Prefer simple solutions with clearly defined responsibilities and boundaries

@@ -3,7 +3,7 @@ name: run-improve-agent
 description: Evolve agent guidance artifacts. Use when adding, refining, or fixing skills, AGENTS.md, or extensions.
 ---
 
-# Improve Agent
+Assumes skill: prefs-agent
 
 ## Aim
 
@@ -16,7 +16,6 @@ Agent files live in `~/repos/dyreby/agent-stuff`.
 
 ## Preconditions
 
-- Read `prefs-agent` for architecture principles and taxonomy
 - Verify repo is clean before editing
 
 ## Procedure

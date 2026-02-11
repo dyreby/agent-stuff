@@ -3,12 +3,11 @@ name: run-commit
 description: Create a git commit for current changes.
 ---
 
-# Commit
+Assumes skill: prefs-git
 
 ## Preconditions
 
 - Staged changes exist
-- Load prefs-git for message format
 
 ## Procedure
 

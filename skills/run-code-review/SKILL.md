@@ -3,7 +3,7 @@ name: run-code-review
 description: Procedure for reviewing code changes.
 ---
 
-# Review
+Assumes skill: prefs-code-review
 
 ## Goal
 
@@ -11,8 +11,7 @@ General-purpose code review procedure that works across contexts: PRs, staged co
 
 ## Preconditions
 
-- Load prefs-code-review for rubric
-- Load applicable prefs-* skills (coding, language, etc.)
+- Load applicable prefs-* skills for the codebase (e.g., prefs-rust)
 
 ## Procedure
 

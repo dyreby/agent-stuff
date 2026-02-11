@@ -3,7 +3,7 @@ name: prefs-code-review
 description: Code review standards and rubric. Use when reviewing code changes.
 ---
 
-# Code Review Preferences
+Assumes skill: prefs-coding
 
 ## Priorities
 

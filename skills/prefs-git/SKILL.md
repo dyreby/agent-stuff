@@ -3,8 +3,6 @@ name: prefs-git
 description: Git preferences including commit message format. Use when working with git.
 ---
 
-# Git Preferences
-
 ## Commit Messages
 
 - Imperative mood ("Add feature" not "Added feature")

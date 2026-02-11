@@ -3,7 +3,7 @@ name: prefs-rust
 description: Rust-specific preferences. Use when working in a Rust codebase.
 ---
 
-# Rust Preferences
+Assumes skill: prefs-coding
 
 ## Style
 

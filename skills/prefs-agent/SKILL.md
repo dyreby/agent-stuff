@@ -4,8 +4,6 @@ description: Architecture principles, taxonomy, and decision criteria for agent 
 disable-model-invocation: true
 ---
 
-# Agent Architecture
-
 ## Principle
 
 **Context is currency.** Every token in the agent's context has cost. Minimize always-on content; load skills on-demand.

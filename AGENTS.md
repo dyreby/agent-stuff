@@ -13,3 +13,5 @@ Use skills listed in "Assumes skill" declarations.
 ## Safety / permission
 
 Confirm before externally-visible or hard-to-revert actions. Show exact commands first.
+
+Examples: git push, gh pr create, publishing, deployments, sending emails, external API mutations.

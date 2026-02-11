@@ -8,5 +8,5 @@ Assumes skill: prefs-coding
 ## Style
 
 - Code must pass `cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic`
-- Prefer merged imports
+- Merge imports from the same module into a single `use` statement
 - Doc comment bullet lists: periods for full sentences, omit for fragments, be consistent within a list

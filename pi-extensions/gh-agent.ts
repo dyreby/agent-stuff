@@ -13,23 +13,39 @@
  *
  * Usage:
  *   pi -e ./pi-extensions/gh-agent.ts           # Default: local + GitHub tools
- *   pi -e ./pi-extensions/gh-agent.ts --gh-only # GitHub-only: no local filesystem
+ *   pi -e ./pi-extensions/gh-agent.ts --gh-only # GitHub-only: sandboxed temp workspace
  *
- * Tools:
+ * Tools (all modes):
  *   gh_issue_list    - List issues
  *   gh_issue_read    - Get issue details + comments
  *   gh_issue_comment - Post comment on issue
  *   gh_pr_list       - List pull requests
  *   gh_pr_read       - Get PR details
  *   gh_pr_diff       - Get PR diff
- *   gh_pr_create     - Create PR from branch (default mode only)
  *   gh_pr_comment    - Post comment on PR
- *   gh_file_read     - Fetch file from GitHub (--gh-only mode only)
+ *
+ * Tools (default mode only):
+ *   gh_pr_create     - Create PR from branch
+ *
+ * Tools (--gh-only mode only):
+ *   gh_file_read     - Fetch file from GitHub
+ *   gh_clone         - Clone repo to sandboxed temp directory
+ *   tmp_read         - Read file in sandbox
+ *   tmp_write        - Write file in sandbox
+ *   tmp_exec         - Execute command in sandbox
+ *   tmp_list         - List directory in sandbox
+ *
+ * Security note: tmp_exec commands run with cwd locked to the sandbox, but can
+ * still access paths outside via absolute paths (e.g., /etc/passwd). This is
+ * intentional to allow running tests, builds, and other development commands.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
 
 // --- Schemas ---
 
@@ -91,6 +107,34 @@ const FileReadSchema = Type.Object({
   ref: Type.Optional(Type.String({ description: "Branch, tag, or commit (default: default branch)" })),
 });
 
+// --- Sandbox Schemas (--gh-only mode) ---
+
+const CloneSchema = Type.Object({
+  repo: RepoParam,
+  ref: Type.Optional(Type.String({ description: "Branch, tag, or commit to checkout after clone" })),
+});
+
+const TmpPathParam = Type.String({ description: "Path relative to sandbox root" });
+
+const TmpReadSchema = Type.Object({
+  path: TmpPathParam,
+});
+
+const TmpWriteSchema = Type.Object({
+  path: TmpPathParam,
+  content: Type.String({ description: "Content to write" }),
+});
+
+const TmpExecSchema = Type.Object({
+  command: Type.String({ description: "Command to execute" }),
+  cwd: Type.Optional(Type.String({ description: "Working directory relative to sandbox root" })),
+  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 60)" })),
+});
+
+const TmpListSchema = Type.Object({
+  path: Type.Optional(TmpPathParam),
+});
+
 // --- Exported Types (for typed tool_call interception) ---
 
 export type IssueListInput = Static<typeof IssueListSchema>;
@@ -102,6 +146,11 @@ export type PrDiffInput = Static<typeof PrDiffSchema>;
 export type PrCreateInput = Static<typeof PrCreateSchema>;
 export type PrCommentInput = Static<typeof PrCommentSchema>;
 export type FileReadInput = Static<typeof FileReadSchema>;
+export type CloneInput = Static<typeof CloneSchema>;
+export type TmpReadInput = Static<typeof TmpReadSchema>;
+export type TmpWriteInput = Static<typeof TmpWriteSchema>;
+export type TmpExecInput = Static<typeof TmpExecSchema>;
+export type TmpListInput = Static<typeof TmpListSchema>;
 
 // --- Helpers ---
 
@@ -169,6 +218,35 @@ async function gh(
   });
 }
 
+// --- Sandbox Helpers ---
+
+let sandboxPromise: Promise<string> | null = null;
+
+async function getSandboxDir(): Promise<string> {
+  return sandboxPromise ??= fs.mkdtemp(path.join(os.tmpdir(), "pi-gh-sandbox-"));
+}
+
+async function cleanupSandbox(): Promise<void> {
+  if (sandboxPromise) {
+    const dir = await sandboxPromise;
+    await fs.rm(dir, { recursive: true, force: true });
+    sandboxPromise = null;
+  }
+}
+
+function resolveSandboxPath(sandbox: string, relativePath: string): string | null {
+  const resolved = path.resolve(sandbox, relativePath);
+  // Ensure the resolved path is within the sandbox
+  if (!resolved.startsWith(sandbox + path.sep) && resolved !== sandbox) {
+    return null;
+  }
+  return resolved;
+}
+
+function sandboxError(message: string): ToolResult {
+  return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+}
+
 // --- Extension ---
 
 export default function ghAgentExtension(pi: ExtensionAPI) {
@@ -183,10 +261,15 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
       pi.setActiveTools([
         "gh_issue_list", "gh_issue_read", "gh_issue_comment",
         "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_comment",
-        "gh_file_read",
+        "gh_file_read", "gh_clone",
+        "tmp_read", "tmp_write", "tmp_exec", "tmp_list",
       ]);
-      ctx.ui.notify("GitHub-only mode: local tools disabled", "info");
+      ctx.ui.notify("GitHub-only mode: sandboxed workspace enabled", "info");
     }
+  });
+
+  pi.on("session_end", async () => {
+    await cleanupSandbox();
   });
 
   // --- Issue Tools ---
@@ -342,6 +425,167 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
         content: [{ type: "text", text: decoded }],
         details: { repo: params.repo, path: params.path, ref: params.ref },
       };
+    },
+  });
+
+  // --- Sandbox Tools (gh-only mode) ---
+
+  pi.registerTool({
+    name: "gh_clone",
+    label: "Clone Repository",
+    description: "Clone a GitHub repository to the sandboxed temp directory",
+    parameters: CloneSchema,
+    async execute(_id, params: CloneInput, signal) {
+      const sandbox = await getSandboxDir();
+      const repoName = params.repo.split("/")[1];
+      const targetDir = path.join(sandbox, repoName);
+
+      // Check if already cloned
+      try {
+        await fs.access(targetDir);
+        return sandboxError(`Repository already cloned at ${repoName}/`);
+      } catch {
+        // Directory doesn't exist, proceed with clone
+      }
+
+      const result = await gh(pi, [
+        "repo", "clone", params.repo, targetDir, "--", "--depth=1",
+      ], signal);
+
+      if (result.code !== 0) {
+        return { content: [{ type: "text", text: `Error: ${result.stderr}` }], isError: true };
+      }
+
+      // Checkout specific ref if requested
+      let refWarning = "";
+      if (params.ref) {
+        const fetchResult = await pi.exec("git", ["-C", targetDir, "fetch", "origin", params.ref], { signal });
+        if (fetchResult.code === 0) {
+          await pi.exec("git", ["-C", targetDir, "checkout", params.ref], { signal });
+        } else {
+          refWarning = ` (warning: could not checkout ref '${params.ref}')`;
+        }
+      }
+
+      return {
+        content: [{ type: "text", text: `Cloned ${params.repo} to ${repoName}/${refWarning}` }],
+        details: { repo: params.repo, path: repoName, ref: params.ref },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "tmp_read",
+    label: "Read File (Sandbox)",
+    description: "Read a file from the sandboxed temp directory",
+    parameters: TmpReadSchema,
+    async execute(_id, params: TmpReadInput) {
+      const sandbox = await getSandboxDir();
+      const resolved = resolveSandboxPath(sandbox, params.path);
+
+      if (!resolved) {
+        return sandboxError("Path escapes sandbox");
+      }
+
+      try {
+        const content = await fs.readFile(resolved, "utf-8");
+        return {
+          content: [{ type: "text", text: content }],
+          details: { path: params.path },
+        };
+      } catch (err) {
+        return sandboxError(`Failed to read file: ${(err as Error).message}`);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "tmp_write",
+    label: "Write File (Sandbox)",
+    description: "Write a file to the sandboxed temp directory",
+    parameters: TmpWriteSchema,
+    async execute(_id, params: TmpWriteInput) {
+      const sandbox = await getSandboxDir();
+      const resolved = resolveSandboxPath(sandbox, params.path);
+
+      if (!resolved) {
+        return sandboxError("Path escapes sandbox");
+      }
+
+      try {
+        await fs.mkdir(path.dirname(resolved), { recursive: true });
+        await fs.writeFile(resolved, params.content, "utf-8");
+        return {
+          content: [{ type: "text", text: `Wrote ${params.content.length} bytes to ${params.path}` }],
+          details: { path: params.path, bytes: params.content.length },
+        };
+      } catch (err) {
+        return sandboxError(`Failed to write file: ${(err as Error).message}`);
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "tmp_exec",
+    label: "Execute Command (Sandbox)",
+    description: "Execute a command in the sandboxed temp directory",
+    parameters: TmpExecSchema,
+    async execute(_id, params: TmpExecInput, signal) {
+      const sandbox = await getSandboxDir();
+      let cwd = sandbox;
+
+      if (params.cwd) {
+        const resolved = resolveSandboxPath(sandbox, params.cwd);
+        if (!resolved) {
+          return sandboxError("Working directory escapes sandbox");
+        }
+        cwd = resolved;
+      }
+
+      const timeout = (params.timeout ?? 60) * 1000;
+      const result = await pi.exec("bash", ["-c", params.command], {
+        cwd,
+        signal,
+        timeout,
+      });
+
+      const output = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
+      return {
+        content: [{ type: "text", text: output || "(no output)" }],
+        details: { code: result.code, cwd: params.cwd ?? "." },
+        isError: result.code !== 0,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "tmp_list",
+    label: "List Directory (Sandbox)",
+    description: "List contents of a directory in the sandboxed temp directory",
+    parameters: TmpListSchema,
+    async execute(_id, params: TmpListInput) {
+      const sandbox = await getSandboxDir();
+      const targetPath = params.path ?? ".";
+      const resolved = resolveSandboxPath(sandbox, targetPath);
+
+      if (!resolved) {
+        return sandboxError("Path escapes sandbox");
+      }
+
+      try {
+        const entries = await fs.readdir(resolved, { withFileTypes: true });
+        const listing = entries.map((e) => {
+          const suffix = e.isDirectory() ? "/" : "";
+          return `${e.name}${suffix}`;
+        }).join("\n");
+
+        return {
+          content: [{ type: "text", text: listing || "(empty directory)" }],
+          details: { path: targetPath, count: entries.length },
+        };
+      } catch (err) {
+        return sandboxError(`Failed to list directory: ${(err as Error).message}`);
+      }
     },
   });
 }

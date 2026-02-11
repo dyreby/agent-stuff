@@ -19,6 +19,6 @@ description: Git preferences including commit message format. Use when working w
 
 Show command/content and confirm before:
 - git push
-- gh pr create, gh pr merge, gh pr close
+- gh pr create, gh pr merge, gh pr close, gh pr review --approve
 - gh pr comment, gh issue comment
 - gh issue close

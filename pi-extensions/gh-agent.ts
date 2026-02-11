@@ -1,31 +1,30 @@
 /**
  * GitHub Agent Extension
  *
- * Provides GitHub API tools for human-agent collaboration.
- * Agent can read issues/PRs, comment, and create PRs using a dedicated agent token.
+ * An agent that only sees the world through GitHub.
  *
- * Setup:
- *   export GH_AGENT_TOKEN=ghp_xxx  # Personal access token for agent account
+ * When you activate this extension, you're talking to an agent whose entire
+ * view of the world is GitHub: issues, PRs, comments, and code. It can read
+ * and respond to conversations, review diffs, and create PRs — but only
+ * through the GitHub API.
+ *
+ * By default, the agent uses your `gh` CLI credentials (from `gh auth login`).
+ * Set GH_AGENT_TOKEN to use a different GitHub account instead.
  *
  * Usage:
  *   pi -e ./pi-extensions/gh-agent.ts           # Default: local + GitHub tools
  *   pi -e ./pi-extensions/gh-agent.ts --gh-only # GitHub-only: no local filesystem
  *
  * Tools:
- *   gh_issue_list    - List open issues
+ *   gh_issue_list    - List issues
  *   gh_issue_read    - Get issue details + comments
- *   gh_issue_comment - Post comment as agent
- *   gh_pr_list       - List open PRs
+ *   gh_issue_comment - Post comment on issue
+ *   gh_pr_list       - List pull requests
  *   gh_pr_read       - Get PR details
  *   gh_pr_diff       - Get PR diff
  *   gh_pr_create     - Create PR from branch (default mode only)
- *   gh_pr_comment    - Comment on PR as agent
+ *   gh_pr_comment    - Post comment on PR
  *   gh_file_read     - Fetch file from GitHub (--gh-only mode only)
- *
- * Invariants (structural, not policy):
- *   - Tools use only GH_AGENT_TOKEN, never user's auth
- *   - No tool accepts token as parameter
- *   - Can comment and create PRs, cannot merge/delete
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -97,17 +96,40 @@ const FileReadSchema = Type.Object({
   ref: Type.Optional(Type.String({ description: "Branch, tag, or commit (default: default branch)" })),
 });
 
-// Helper to run gh CLI with agent token
+// Cached token (resolved once per session)
+let cachedToken: string | null = null;
+
+// Get GitHub token: GH_AGENT_TOKEN if set, otherwise fall back to gh CLI auth
+async function getToken(pi: ExtensionAPI): Promise<string | null> {
+  if (cachedToken) return cachedToken;
+
+  // Explicit token takes precedence (for using a different account)
+  if (process.env.GH_AGENT_TOKEN) {
+    cachedToken = process.env.GH_AGENT_TOKEN;
+    return cachedToken;
+  }
+
+  // Fall back to gh CLI's stored credentials
+  const result = await pi.exec("gh", ["auth", "token"]);
+  if (result.code === 0 && result.stdout.trim()) {
+    cachedToken = result.stdout.trim();
+    return cachedToken;
+  }
+
+  return null;
+}
+
+// Helper to run gh CLI with resolved token
 async function ghAgent(
   pi: ExtensionAPI,
   args: string[],
   signal?: AbortSignal
 ): Promise<{ stdout: string; stderr: string; code: number }> {
-  const token = process.env.GH_AGENT_TOKEN;
+  const token = await getToken(pi);
   if (!token) {
     return {
       stdout: "",
-      stderr: "GH_AGENT_TOKEN environment variable not set",
+      stderr: "No GitHub credentials found. Run `gh auth login` or set GH_AGENT_TOKEN.",
       code: 1,
     };
   }

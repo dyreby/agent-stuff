@@ -10,6 +10,11 @@ description: Git preferences including commit message format. Use when working w
 - Body optional—if needed, blank line after subject
 - No sign-offs or footers
 
+## PR Reviews
+
+- Verify claims against the diff; comments may be stale from development history
+- Use professional tone; avoid casual shorthand (LGTM) and emoji
+
 ## Confirmation Required
 
 Show command/content and confirm before:

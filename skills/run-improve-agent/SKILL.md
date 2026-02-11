@@ -20,12 +20,13 @@ Agent files live in `~/repos/dyreby/agent-stuff`.
 
 ## Procedure
 
-1. Clarify intent: what should change and why
-2. Classify: what type of content (per prefs-agent taxonomy)
-3. Locate: which artifact should change, or create new
-4. Review: read existing artifacts to understand context
-5. Propose: minimal change, explain placement
-6. Apply: make the change
+1. If loaded mid-session: ask what behavior was incorrect; gather context only if directed
+2. Clarify intent: what should change and why
+3. Classify: what type of content (per prefs-agent taxonomy)
+4. Locate: which artifact should change, or create new
+5. Review: read existing artifacts to understand context
+6. Propose: minimal change, explain placement
+7. Apply: make the change
 
 ## Guidelines
 

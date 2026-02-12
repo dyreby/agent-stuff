@@ -32,10 +32,10 @@ description: Git preferences including commit message format. Use when working w
 
 ## Confirmation Required
 
-Show command/content and confirm before externally-visible actions:
+Show command/content and confirm before externally-visible or hard-to-revert actions:
 
 CLI:
-- git push
+- git push (especially --force)
 - gh issue create, gh issue comment, gh issue close
 - gh pr create, gh pr merge, gh pr close, gh pr comment, gh pr review
 

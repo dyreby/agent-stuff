@@ -17,8 +17,13 @@ description: Git preferences including commit message format. Use when working w
 
 ## Confirmation Required
 
-Show command/content and confirm before:
+Show command/content and confirm before externally-visible actions:
+
+CLI:
 - git push
-- gh pr create, gh pr merge, gh pr close, gh pr review
-- gh issue create, gh pr comment, gh issue comment, gh issue close
-- gh_issue_create, gh_pr_review, gh_pr_comment, gh_issue_comment (function tool equivalents)
+- gh issue create, gh issue comment, gh issue close
+- gh pr create, gh pr merge, gh pr close, gh pr comment, gh pr review
+
+gh-agent tools:
+- gh_issue_create, gh_issue_comment
+- gh_pr_create, gh_pr_comment, gh_pr_review, gh_pr_request_review

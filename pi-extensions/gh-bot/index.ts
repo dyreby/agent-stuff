@@ -267,15 +267,15 @@ export default function ghBotExtension(pi: ExtensionAPI) {
         "Paste your GitHub App private key (PEM format):",
         ""
       );
-      if (!privateKey || !privateKey.includes("-----BEGIN")) {
+      if (!privateKey || !privateKey.includes("-----BEGIN") || !privateKey.includes("-----END")) {
         ctx.ui.notify("Invalid or empty private key", "error");
         return;
       }
 
-      // Store credentials
+      // Store credentials (key first, so partial failure doesn't leave broken config)
       try {
-        await writeConfig({ appId, installationId });
         await setPrivateKey(privateKey);
+        await writeConfig({ appId, installationId });
         ctx.ui.notify("GitHub App configured successfully! Use /gh-bot on to enable.", "info");
       } catch (err) {
         ctx.ui.notify(`Failed to save config: ${err}`, "error");

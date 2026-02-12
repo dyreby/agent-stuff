@@ -13,4 +13,4 @@ disable-model-invocation: true
 
 - Cannot self-approve; leave review as comment and request user review
 - Verify PR is approved before merging (`gh pr view --json reviewDecision`)
-- When replying to inline review comments, reference the addressing commit
+- Reply to inline comments using `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies -X POST -f body="..."`, not `gh pr comment`

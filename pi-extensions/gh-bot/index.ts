@@ -17,24 +17,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createBashTool } from "@mariozechner/pi-coding-agent";
-import { spawn } from "node:child_process";
 import { getInstallationToken } from "./auth.js";
-import { readConfig, writeConfig, setPrivateKey, getPrivateKey, getAnthropicRefreshToken } from "./config.js";
-
-/** Run gh command with value piped to stdin (for secrets) */
-async function ghSecretSet(name: string, value: string, repo: string): Promise<{ code: number; stderr: string }> {
-  return new Promise((resolve) => {
-    const proc = spawn("gh", ["secret", "set", name, `--repo=${repo}`], {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stderr = "";
-    proc.stderr.on("data", (data) => { stderr += data.toString(); });
-    proc.on("error", (err) => resolve({ code: 1, stderr: err.message }));
-    proc.on("close", (code) => resolve({ code: code ?? 1, stderr }));
-    proc.stdin.write(value);
-    proc.stdin.end();
-  });
-}
+import { readConfig, writeConfig, setPrivateKey, getPrivateKey } from "./config.js";
 
 function botSystemPrompt(agent: string): string {
   return `
@@ -201,75 +185,4 @@ export default function ghBotExtension(pi: ExtensionAPI) {
     },
   });
 
-  // Sync command to push local config to GitHub secrets/variables
-  pi.registerCommand("gh-bot-sync", {
-    description: "Sync local GitHub App config to GitHub repo secrets/variables",
-    handler: async (_args, ctx) => {
-      // Read all local sources
-      const config = await readConfig();
-      if (!config || !config.appId || !config.installationId || !config.human || !config.agent || !config.repo) {
-        ctx.ui.notify("Missing config. Run /gh-bot-setup first.", "error");
-        return;
-      }
-
-      const privateKey = await getPrivateKey();
-      if (!privateKey) {
-        ctx.ui.notify("Private key not found in Keychain. Run /gh-bot-setup first.", "error");
-        return;
-      }
-
-      const anthropicToken = await getAnthropicRefreshToken();
-      if (!anthropicToken) {
-        ctx.ui.notify("Anthropic refresh token not found in ~/.pi/agent/auth.json", "error");
-        return;
-      }
-
-      // Show summary (names only, no values)
-      ctx.ui.notify(`Target: ${config.repo}`, "info");
-      ctx.ui.notify("Variables: GH_BOT_APP_ID, GH_BOT_INSTALLATION_ID, GH_BOT_HUMAN, GH_BOT_AGENT", "info");
-      ctx.ui.notify("Secrets: GH_BOT_PRIVATE_KEY, ANTHROPIC_REFRESH_TOKEN", "info");
-
-      const confirmed = await ctx.ui.confirm("Sync to GitHub?", `Push all variables and secrets to ${config.repo}?`);
-      if (!confirmed) {
-        ctx.ui.notify("Sync cancelled", "warning");
-        return;
-      }
-
-      const repoArg = `--repo=${config.repo}`;
-
-      // Set variables
-      const variables = [
-        ["GH_BOT_APP_ID", config.appId.toString()],
-        ["GH_BOT_INSTALLATION_ID", config.installationId.toString()],
-        ["GH_BOT_HUMAN", config.human],
-        ["GH_BOT_AGENT", config.agent],
-      ];
-
-      for (const [name, value] of variables) {
-        const result = await pi.exec("gh", ["variable", "set", name, "--body", value, repoArg]);
-        if (result.code !== 0) {
-          ctx.ui.notify(`Failed to set ${name}: ${result.stderr}`, "error");
-          return;
-        }
-        ctx.ui.notify(`✓ ${name}`, "info");
-      }
-
-      // Set secrets (pipe via stdin to avoid command-line exposure)
-      const secrets = [
-        ["GH_BOT_PRIVATE_KEY", privateKey],
-        ["ANTHROPIC_REFRESH_TOKEN", anthropicToken],
-      ];
-
-      for (const [name, value] of secrets) {
-        const result = await ghSecretSet(name, value, config.repo);
-        if (result.code !== 0) {
-          ctx.ui.notify(`Failed to set ${name}: ${result.stderr}`, "error");
-          return;
-        }
-        ctx.ui.notify(`✓ ${name} (secret)`, "info");
-      }
-
-      ctx.ui.notify("Sync complete!", "info");
-    },
-  });
 }

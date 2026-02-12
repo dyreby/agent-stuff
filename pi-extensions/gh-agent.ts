@@ -29,6 +29,7 @@
  *   gh_pr_review         - Submit a review (approve, request changes, comment)
  *
  * Tools (--gh-only mode only):
+ *   read             - Read local files (for skills/context)
  *   gh_file_read     - Fetch file from GitHub
  *   gh_clone         - Clone repo to sandboxed temp directory
  *   tmp_read         - Read file in sandbox
@@ -292,7 +293,7 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
         "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
         "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_create", "gh_pr_comment",
         "gh_pr_request_review", "gh_pr_review",
-        "gh_file_read", "gh_clone",
+        "read", "gh_file_read", "gh_clone",
         "tmp_read", "tmp_write", "tmp_exec", "tmp_list",
       ]);
       ctx.ui.notify("GitHub-only mode: sandboxed workspace enabled", "info");

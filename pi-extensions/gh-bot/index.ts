@@ -1,21 +1,16 @@
 /**
- * GitHub Agent Extension
+ * GitHub Bot Extension
  *
- * An agent that only sees the world through GitHub.
+ * Provides GitHub tools with an identity toggle:
+ * - `/gh-bot off` (default): GitHub operations use your personal `gh` CLI auth
+ * - `/gh-bot on`: GitHub operations use GitHub App credentials (appears as bot)
  *
- * When --gh-agent is enabled, you're talking to an agent whose entire view of the
- * world is GitHub: issues, PRs, comments, and code. It can read and respond to
- * conversations, review diffs, and create PRs — but only through the GitHub API.
- *
- * All GitHub operations go through a configured GitHub App (see --gh-agent-setup).
- *
- * Without --gh-agent, this extension is invisible and registers no tools.
+ * All built-in tools (bash, read, edit, write) remain available—no sandboxing.
  *
  * Usage:
- *   pi -e ./pi-extensions/gh-agent.ts             # No-op (extension inactive)
- *   pi -e ./pi-extensions/gh-agent.ts --gh-agent  # GitHub-only: sandboxed workspace
+ *   pi -e ./pi-extensions/gh-bot
  *
- * Tools (--gh-agent mode):
+ * Tools:
  *   gh_issue_list        - List issues
  *   gh_issue_read        - Get issue details + comments
  *   gh_issue_comment     - Post comment on issue
@@ -27,26 +22,20 @@
  *   gh_pr_comment        - Post comment on PR
  *   gh_pr_request_review - Request reviewers on a PR
  *   gh_pr_review         - Submit a review (approve, request changes, comment)
- *   read                 - Read local files (for skills/context)
  *   gh_file_read         - Fetch file from GitHub
- *   gh_clone             - Clone repo to sandboxed temp directory
- *   tmp_read             - Read file in sandbox
- *   tmp_write            - Write file in sandbox
- *   tmp_exec             - Execute command in sandbox
- *   tmp_list             - List directory in sandbox
  *
- * Security note: tmp_exec commands run with cwd locked to the sandbox, but can
- * still access paths outside via absolute paths (e.g., /etc/passwd). This is
- * intentional to allow running tests, builds, and other development commands.
+ * Commands:
+ *   /gh-bot [on|off]     - Toggle bot identity for GitHub operations
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import * as os from "node:os";
 import { getInstallationToken, clearTokenCache } from "./auth.js";
+
+// --- State ---
+
+let useBotAuth = false;
 
 // --- Schemas ---
 
@@ -134,34 +123,6 @@ const FileReadSchema = Type.Object({
   ref: Type.Optional(Type.String({ description: "Branch, tag, or commit (default: default branch)" })),
 });
 
-// --- Sandbox Schemas (--gh-only mode) ---
-
-const CloneSchema = Type.Object({
-  repo: RepoParam,
-  ref: Type.Optional(Type.String({ description: "Branch, tag, or commit to checkout after clone" })),
-});
-
-const TmpPathParam = Type.String({ description: "Path relative to sandbox root" });
-
-const TmpReadSchema = Type.Object({
-  path: TmpPathParam,
-});
-
-const TmpWriteSchema = Type.Object({
-  path: TmpPathParam,
-  content: Type.String({ description: "Content to write" }),
-});
-
-const TmpExecSchema = Type.Object({
-  command: Type.String({ description: "Command to execute" }),
-  cwd: Type.Optional(Type.String({ description: "Working directory relative to sandbox root" })),
-  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 60)" })),
-});
-
-const TmpListSchema = Type.Object({
-  path: Type.Optional(TmpPathParam),
-});
-
 // --- Exported Types (for typed tool_call interception) ---
 
 export type IssueListInput = Static<typeof IssueListSchema>;
@@ -176,11 +137,6 @@ export type PrCommentInput = Static<typeof PrCommentSchema>;
 export type PrRequestReviewInput = Static<typeof PrRequestReviewSchema>;
 export type PrReviewInput = Static<typeof PrReviewSchema>;
 export type FileReadInput = Static<typeof FileReadSchema>;
-export type CloneInput = Static<typeof CloneSchema>;
-export type TmpReadInput = Static<typeof TmpReadSchema>;
-export type TmpWriteInput = Static<typeof TmpWriteSchema>;
-export type TmpExecInput = Static<typeof TmpExecSchema>;
-export type TmpListInput = Static<typeof TmpListSchema>;
 
 // --- Helpers ---
 
@@ -206,11 +162,6 @@ function ghResultText(result: ExecResult, text: string, details?: Record<string,
   return { content: [{ type: "text", text }], details };
 }
 
-async function getToken(): Promise<string | null> {
-  // getInstallationToken() handles its own caching with auto-refresh
-  return await getInstallationToken();
-}
-
 function isAuthError(stderr: string): boolean {
   return /401|Bad credentials|authentication|unauthorized/i.test(stderr);
 }
@@ -220,14 +171,13 @@ async function gh(
   args: string[],
   signal?: AbortSignal
 ): Promise<ExecResult> {
-  const token = await getToken();
-  if (!token) {
-    return {
-      stdout: "",
-      stderr: "GitHub App not configured. Run with --gh-agent-setup first.",
-      code: 1,
-    };
+  if (!useBotAuth) {
+    // Use personal gh CLI auth
+    return pi.exec("gh", args, { signal });
   }
+
+  // Use GitHub App token
+  const token = await getInstallationToken();
 
   const result = await pi.exec("gh", args, {
     signal,
@@ -237,8 +187,8 @@ async function gh(
   // Retry once on auth error (token may have expired)
   if (result.code !== 0 && isAuthError(result.stderr)) {
     clearTokenCache();
-    const newToken = await getToken();
-    if (newToken && newToken !== token) {
+    const newToken = await getInstallationToken();
+    if (newToken !== token) {
       return pi.exec("gh", args, {
         signal,
         env: { ...process.env, GH_TOKEN: newToken },
@@ -249,68 +199,47 @@ async function gh(
   return result;
 }
 
-// --- Sandbox Helpers ---
-
-let sandboxPromise: Promise<string> | null = null;
-
-async function getSandboxDir(): Promise<string> {
-  return sandboxPromise ??= fs.mkdtemp(path.join(os.tmpdir(), "pi-gh-sandbox-"));
-}
-
-async function cleanupSandbox(): Promise<void> {
-  if (sandboxPromise) {
-    const dir = await sandboxPromise;
-    await fs.rm(dir, { recursive: true, force: true });
-    sandboxPromise = null;
-  }
-}
-
-function resolveSandboxPath(sandbox: string, relativePath: string): string | null {
-  const resolved = path.resolve(sandbox, relativePath);
-  // Ensure the resolved path is within the sandbox
-  if (!resolved.startsWith(sandbox + path.sep) && resolved !== sandbox) {
-    return null;
-  }
-  return resolved;
-}
-
-function sandboxError(message: string): ToolResult {
-  return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-}
-
 // --- Extension ---
 
-export default function ghAgentExtension(pi: ExtensionAPI) {
-  pi.registerFlag("gh-agent", {
-    description: "Enable GitHub agent mode (GitHub App auth, sandboxed workspace)",
-    type: "boolean",
-    default: false,
+export default function ghBotExtension(pi: ExtensionAPI) {
+  // Register tools at load time (always available)
+  registerGhTools(pi);
+
+  // Toggle command
+  pi.registerCommand("gh-bot", {
+    description: "Toggle GitHub bot identity (on/off)",
+    handler: async (args, ctx) => {
+      const arg = args?.trim().toLowerCase();
+      if (arg === "on") {
+        useBotAuth = true;
+      } else if (arg === "off") {
+        useBotAuth = false;
+      } else {
+        useBotAuth = !useBotAuth;
+      }
+
+      ctx.ui.setStatus("gh-bot", useBotAuth ? "🤖 bot" : undefined);
+      ctx.ui.notify(`GitHub: ${useBotAuth ? "bot (App)" : "you (gh CLI)"}`);
+
+      pi.appendEntry("gh-bot", { enabled: useBotAuth });
+    },
   });
 
+  // Restore state on session resume
   pi.on("session_start", async (_event, ctx) => {
-    // Without --gh-agent, extension stays inactive and registers no tools
-    if (!pi.getFlag("gh-agent")) {
-      return;
+    const entries = ctx.sessionManager.getEntries();
+    const lastState = entries
+      .filter((e) => e.type === "custom" && e.customType === "gh-bot")
+      .pop();
+
+    if (lastState?.data?.enabled) {
+      useBotAuth = true;
+      ctx.ui.setStatus("gh-bot", "🤖 bot");
     }
-
-    registerGhAgentTools(pi);
-
-    pi.setActiveTools([
-      "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
-      "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_create", "gh_pr_comment",
-      "gh_pr_request_review", "gh_pr_review",
-      "read", "gh_file_read", "gh_clone",
-      "tmp_read", "tmp_write", "tmp_exec", "tmp_list",
-    ]);
-    ctx.ui.notify("GitHub agent mode: sandboxed workspace enabled", "info");
-  });
-
-  pi.on("session_end", async () => {
-    await cleanupSandbox();
   });
 }
 
-function registerGhAgentTools(pi: ExtensionAPI) {
+function registerGhTools(pi: ExtensionAPI) {
   // --- Issue Tools ---
 
   pi.registerTool({
@@ -348,7 +277,7 @@ function registerGhAgentTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "gh_issue_comment",
     label: "Comment on Issue",
-    description: "Post a comment on an issue as the agent",
+    description: "Post a comment on an issue",
     parameters: IssueCommentSchema,
     async execute(_id, params: IssueCommentInput, signal) {
       const result = await gh(pi, [
@@ -449,7 +378,7 @@ function registerGhAgentTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "gh_pr_comment",
     label: "Comment on PR",
-    description: "Post a comment on a pull request as the agent",
+    description: "Post a comment on a pull request",
     parameters: PrCommentSchema,
     async execute(_id, params: PrCommentInput, signal) {
       const result = await gh(pi, [
@@ -524,7 +453,7 @@ function registerGhAgentTools(pi: ExtensionAPI) {
     },
   });
 
-  // --- File Read (gh-only mode) ---
+  // --- File Read ---
 
   pi.registerTool({
     name: "gh_file_read",
@@ -545,167 +474,6 @@ function registerGhAgentTools(pi: ExtensionAPI) {
         content: [{ type: "text", text: decoded }],
         details: { repo: params.repo, path: params.path, ref: params.ref },
       };
-    },
-  });
-
-  // --- Sandbox Tools (gh-only mode) ---
-
-  pi.registerTool({
-    name: "gh_clone",
-    label: "Clone Repository",
-    description: "Clone a GitHub repository to the sandboxed temp directory",
-    parameters: CloneSchema,
-    async execute(_id, params: CloneInput, signal) {
-      const sandbox = await getSandboxDir();
-      const repoName = params.repo.split("/")[1];
-      const targetDir = path.join(sandbox, repoName);
-
-      // Check if already cloned
-      try {
-        await fs.access(targetDir);
-        return sandboxError(`Repository already cloned at ${repoName}/`);
-      } catch {
-        // Directory doesn't exist, proceed with clone
-      }
-
-      const result = await gh(pi, [
-        "repo", "clone", params.repo, targetDir, "--", "--depth=1",
-      ], signal);
-
-      if (result.code !== 0) {
-        return { content: [{ type: "text", text: `Error: ${result.stderr}` }], isError: true };
-      }
-
-      // Checkout specific ref if requested
-      let refWarning = "";
-      if (params.ref) {
-        const fetchResult = await pi.exec("git", ["-C", targetDir, "fetch", "origin", params.ref], { signal });
-        if (fetchResult.code === 0) {
-          await pi.exec("git", ["-C", targetDir, "checkout", params.ref], { signal });
-        } else {
-          refWarning = ` (warning: could not checkout ref '${params.ref}')`;
-        }
-      }
-
-      return {
-        content: [{ type: "text", text: `Cloned ${params.repo} to ${repoName}/${refWarning}` }],
-        details: { repo: params.repo, path: repoName, ref: params.ref },
-      };
-    },
-  });
-
-  pi.registerTool({
-    name: "tmp_read",
-    label: "Read File (Sandbox)",
-    description: "Read a file from the sandboxed temp directory",
-    parameters: TmpReadSchema,
-    async execute(_id, params: TmpReadInput) {
-      const sandbox = await getSandboxDir();
-      const resolved = resolveSandboxPath(sandbox, params.path);
-
-      if (!resolved) {
-        return sandboxError("Path escapes sandbox");
-      }
-
-      try {
-        const content = await fs.readFile(resolved, "utf-8");
-        return {
-          content: [{ type: "text", text: content }],
-          details: { path: params.path },
-        };
-      } catch (err) {
-        return sandboxError(`Failed to read file: ${(err as Error).message}`);
-      }
-    },
-  });
-
-  pi.registerTool({
-    name: "tmp_write",
-    label: "Write File (Sandbox)",
-    description: "Write a file to the sandboxed temp directory",
-    parameters: TmpWriteSchema,
-    async execute(_id, params: TmpWriteInput) {
-      const sandbox = await getSandboxDir();
-      const resolved = resolveSandboxPath(sandbox, params.path);
-
-      if (!resolved) {
-        return sandboxError("Path escapes sandbox");
-      }
-
-      try {
-        await fs.mkdir(path.dirname(resolved), { recursive: true });
-        await fs.writeFile(resolved, params.content, "utf-8");
-        return {
-          content: [{ type: "text", text: `Wrote ${params.content.length} bytes to ${params.path}` }],
-          details: { path: params.path, bytes: params.content.length },
-        };
-      } catch (err) {
-        return sandboxError(`Failed to write file: ${(err as Error).message}`);
-      }
-    },
-  });
-
-  pi.registerTool({
-    name: "tmp_exec",
-    label: "Execute Command (Sandbox)",
-    description: "Execute a command in the sandboxed temp directory",
-    parameters: TmpExecSchema,
-    async execute(_id, params: TmpExecInput, signal) {
-      const sandbox = await getSandboxDir();
-      let cwd = sandbox;
-
-      if (params.cwd) {
-        const resolved = resolveSandboxPath(sandbox, params.cwd);
-        if (!resolved) {
-          return sandboxError("Working directory escapes sandbox");
-        }
-        cwd = resolved;
-      }
-
-      const timeout = (params.timeout ?? 60) * 1000;
-      const result = await pi.exec("bash", ["-c", params.command], {
-        cwd,
-        signal,
-        timeout,
-      });
-
-      const output = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
-      return {
-        content: [{ type: "text", text: output || "(no output)" }],
-        details: { code: result.code, cwd: params.cwd ?? "." },
-        isError: result.code !== 0,
-      };
-    },
-  });
-
-  pi.registerTool({
-    name: "tmp_list",
-    label: "List Directory (Sandbox)",
-    description: "List contents of a directory in the sandboxed temp directory",
-    parameters: TmpListSchema,
-    async execute(_id, params: TmpListInput) {
-      const sandbox = await getSandboxDir();
-      const targetPath = params.path ?? ".";
-      const resolved = resolveSandboxPath(sandbox, targetPath);
-
-      if (!resolved) {
-        return sandboxError("Path escapes sandbox");
-      }
-
-      try {
-        const entries = await fs.readdir(resolved, { withFileTypes: true });
-        const listing = entries.map((e) => {
-          const suffix = e.isDirectory() ? "/" : "";
-          return `${e.name}${suffix}`;
-        }).join("\n");
-
-        return {
-          content: [{ type: "text", text: listing || "(empty directory)" }],
-          details: { path: targetPath, count: entries.length },
-        };
-      } catch (err) {
-        return sandboxError(`Failed to list directory: ${(err as Error).message}`);
-      }
     },
   });
 }

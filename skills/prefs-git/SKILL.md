@@ -16,8 +16,9 @@ description: Git preferences including commit message format. Use when working w
 - Body optional—if needed, blank line after subject
 - No sign-offs or footers
 
-## PR Reviews
+## Pull Requests
 
+- When discussing a PR, read the diff first to understand current state
 - Verify claims against the diff; comments may be stale from development history
 - Use professional tone; avoid casual shorthand (LGTM) and emoji
 

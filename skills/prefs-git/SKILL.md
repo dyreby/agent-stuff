@@ -8,6 +8,7 @@ description: Git preferences including commit message format. Use when working w
 - Never commit directly to main; create a feature branch first
 - Branch naming: descriptive kebab-case (e.g., `fix-pr-create-tool`)
 - Exception: only commit to main if user explicitly requests it
+- Branch deletion: include both local and remote when asked to remove branches; confirm before deleting (hard to revert, especially remote)
 
 ## Commit Messages
 

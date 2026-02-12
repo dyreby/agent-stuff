@@ -16,15 +16,17 @@ jobs:
   respond:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Get app token
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.GH_BOT_APP_ID }}
           private-key: ${{ secrets.GH_BOT_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Record prompt
         env:
@@ -68,7 +70,8 @@ jobs:
               input: (map(.input // 0) | add // 0),
               output: (map(.output // 0) | add // 0),
               cacheRead: (map(.cacheRead // 0) | add // 0),
-              cacheWrite: (map(.cacheWrite // 0) | add // 0)
+              cacheWrite: (map(.cacheWrite // 0) | add // 0),
+              cost: (map(.cost.total // 0) | add // 0)
             } |
-            "- Input: \(.input) | Output: \(.output) | Cache read: \(.cacheRead) | Cache write: \(.cacheWrite)"
+            "- Input: \(.input) | Output: \(.output) | Cache read: \(.cacheRead) | Cache write: \(.cacheWrite) | Cost: $\(.cost | tostring | .[0:6])"
           ' /tmp/pi-output.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No usage data" >> $GITHUB_STEP_SUMMARY

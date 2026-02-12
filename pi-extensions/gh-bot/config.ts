@@ -42,6 +42,8 @@ const KEYCHAIN_ACCOUNT = "private-key";
 const ENV_APP_ID = "GH_BOT_APP_ID";
 const ENV_INSTALLATION_ID = "GH_BOT_INSTALLATION_ID";
 const ENV_PRIVATE_KEY = "GH_BOT_PRIVATE_KEY";
+const ENV_HUMAN = "GH_BOT_HUMAN";
+const ENV_AGENT = "GH_BOT_AGENT";
 
 // --- Config Helpers ---
 
@@ -57,7 +59,12 @@ export async function readConfig(): Promise<GhBotConfig | null> {
     const appId = parseInt(envAppId, 10);
     const installationId = parseInt(envInstallId, 10);
     if (!isNaN(appId) && !isNaN(installationId)) {
-      return { appId, installationId };
+      return {
+        appId,
+        installationId,
+        human: process.env[ENV_HUMAN],
+        agent: process.env[ENV_AGENT],
+      };
     }
   }
 

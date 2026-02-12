@@ -74,5 +74,7 @@ jobs:
           GH_BOT_APP_ID: ${{ vars.GH_BOT_APP_ID }}
           GH_BOT_INSTALLATION_ID: ${{ vars.GH_BOT_INSTALLATION_ID }}
           GH_BOT_PRIVATE_KEY: ${{ secrets.GH_BOT_PRIVATE_KEY }}
+          GH_BOT_HUMAN: ${{ vars.GH_BOT_HUMAN }}
+          GH_BOT_AGENT: ${{ vars.GH_BOT_AGENT }}
         run: |
           pi -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}"

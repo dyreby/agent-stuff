@@ -77,13 +77,12 @@ Your local pi has fresh tokens. Sync pushes them to GitHub.
 | Identity | You (personal `gh` auth) | GitHub App |
 | Confirmations | Required for push/comment/etc | Pre-approved, executes directly |
 
-## Excluding from Auto-load
+## Do Not Auto-load
 
-If symlinked to `~/.pi/agent/extensions/`, exclude with:
+This extension is designed for explicit CLI invocation only:
 
-```json
-// ~/.pi/agent/settings.json
-{
-  "extensions": ["-extensions/gh-bot"]
-}
+```bash
+pi -e ./pi-extensions/gh-bot
 ```
+
+**Do not** symlink it to `~/.pi/agent/extensions/`. It replaces the bash tool and injects a bot-mode system prompt—behavior you only want when acting as the GitHub App.

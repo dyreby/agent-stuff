@@ -1,81 +1,38 @@
 # gh-bot Extension
 
-GitHub App authentication for pi bot mode. When loaded, all `gh` CLI commands authenticate as the GitHub App instead of your personal account.
+A pi extension that lets you run an AI agent as a GitHub App in your repo. Mention `@<agent>` in any issue or PR comment, and the agent responds—using the same skills and behavior as when you run pi locally.
 
-## Design
+## Assumptions
 
-This extension enables a webhook-driven workflow:
+- **macOS** for local development (uses Keychain for secrets)
+- **Single repo** where the GitHub App is installed
+- **Personal use** — one human, one agent
+- **Claude MAX** subscription (uses OAuth, not API key)
 
-1. **You** comment on an issue/PR with `@<agent> <prompt>`
-2. **GitHub Action** extracts the prompt and invokes pi with this extension
-3. **pi** executes the prompt, posting responses as the GitHub App
-4. **You** review the bot's work and iterate
+## Quick Start
 
-The prompt is identical to what you'd type in pi locally. Skills drive behavior—the extension only handles auth and confirmation bypass.
+### 1. Create a GitHub App
 
-## Invocation
+Go to https://github.com/settings/apps and create an App with:
+- Permissions: Issues (read/write), Pull requests (read/write), Contents (read/write)
+- Install it on your target repo
 
-**Not auto-loaded.** Invoke explicitly via path:
+### 2. Configure locally
 
 ```bash
-# Local testing
 pi -e ./pi-extensions/gh-bot
-
-# CI (print mode)
-pi -e ./pi-extensions/gh-bot -p "issue #12: create a pr for this"
+/gh-bot-setup
 ```
 
-To exclude from auto-load if symlinked to `~/.pi/agent/extensions/`:
+### 3. Sync to GitHub
 
-```json
-// ~/.pi/agent/settings.json
-{
-  "extensions": ["-extensions/gh-bot"]
-}
+```
+/gh-bot-sync
 ```
 
-## Credentials
+### 4. Use it
 
-Reads from environment variables (CI) or local config (macOS):
-
-| Source | Location |
-|--------|----------|
-| Environment | `GH_BOT_APP_ID`, `GH_BOT_INSTALLATION_ID`, `GH_BOT_PRIVATE_KEY` |
-| Local config | `~/.config/gh-bot/config.json` + macOS Keychain |
-
-Environment variables take precedence.
-
-### Setup
-
-Run `/gh-bot-setup` in pi to configure:
-
-| Field | Storage | Description |
-|-------|---------|-------------|
-| `appId` | config.json | GitHub App ID |
-| `installationId` | config.json | Installation ID for the target repo |
-| `human` | config.json | Your GitHub login (who can invoke the bot) |
-| `agent` | config.json | GitHub App name (the bot identity) |
-| `repo` | config.json | Target repo (`owner/repo`) |
-| Private key | Keychain | GitHub App PEM key (base64-encoded in Keychain) |
-
-### Sync to GitHub
-
-Run `/gh-bot-sync` to push local config to GitHub:
-
-| Type | Name | Source |
-|------|------|--------|
-| Variable | `GH_BOT_APP_ID` | config.json |
-| Variable | `GH_BOT_INSTALLATION_ID` | config.json |
-| Variable | `GH_BOT_HUMAN` | config.json |
-| Variable | `GH_BOT_AGENT` | config.json |
-| Secret | `GH_BOT_PRIVATE_KEY` | Keychain |
-| Secret | `ANTHROPIC_REFRESH_TOKEN` | `~/.pi/agent/auth.json` |
-
-The LLM never sees secret values—sync is a direct command that reads local files and pipes to `gh`.
-
-## Directive Pattern
-
-Mention `@<agent>` (the GitHub App name) followed by a prompt:
+Comment on any issue or PR:
 
 ```
 @<agent> create a pr for this
@@ -83,19 +40,35 @@ Mention `@<agent>` (the GitHub App name) followed by a prompt:
 @<agent> what do you think about this approach
 ```
 
-The text after `@<agent>` becomes the pi prompt.
+The text after `@<agent>` becomes the prompt—identical to what you'd type in pi locally.
 
-## Prompt Format
+## How It Works
 
-GitHub Actions pass minimal context—the agent reads the issue/PR to find the directive:
+1. You comment with `@<agent> <prompt>`
+2. GitHub Action triggers, passes `respond to issue #N` to pi
+3. pi (with this extension) authenticates as the GitHub App
+4. Agent reads the issue/PR, finds your `@<agent>` directive, executes it
+5. Responses post as the GitHub App
 
-| Event | Prompt |
-|-------|--------|
-| Issue comment | `respond to issue #N` |
-| PR comment | `respond to pr #N` |
-| PR review | `respond to pr #N` |
+Skills drive behavior. The extension only handles auth and confirmation bypass.
 
-The agent reads the issue/PR, finds the `@<agent>` mention, and executes the text following it as the prompt.
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/gh-bot-setup` | Configure GitHub App credentials (stored in `~/.config/gh-bot/` + Keychain) |
+| `/gh-bot-sync` | Push local config to GitHub repo variables/secrets |
+
+## Auth Recovery
+
+If CI fails due to expired Anthropic token:
+
+```bash
+pi -e ./pi-extensions/gh-bot
+/gh-bot-sync
+```
+
+Your local pi has fresh tokens. Sync pushes them to GitHub.
 
 ## Behavioral Differences
 
@@ -104,7 +77,13 @@ The agent reads the issue/PR, finds the `@<agent>` mention, and executes the tex
 | Identity | You (personal `gh` auth) | GitHub App |
 | Confirmations | Required for push/comment/etc | Pre-approved, executes directly |
 
-## Guardrails
+## Excluding from Auto-load
 
-- Only comments from `<human>` can invoke the bot (filtered in GH Action)
-- Bot's own comments don't trigger workflows (`<agent>` ≠ `<human>`)
+If symlinked to `~/.pi/agent/extensions/`, exclude with:
+
+```json
+// ~/.pi/agent/settings.json
+{
+  "extensions": ["-extensions/gh-bot"]
+}
+```

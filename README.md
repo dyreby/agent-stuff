@@ -1,8 +1,31 @@
 # agent-stuff
 
-Personal agent customizations for [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent): skills, prompts, themes, and extensions.
+This repo is where I iterate with my agent toward alignment.
 
-## Skills Taxonomy
+The skills that guide the agent live here. When the agent does something unexpected, I refine them the boring way: issues and PRs. Over time, its responses should converge with my priorities, judgment, and standards.
+
+The end goal: agent behavior aligned with my expectations, captured in skills.
+
+## Principles
+
+- **Same prompt, same behavior.** Prompting `pi` locally or through the bot uses the same skills and context.
+- **Skills evolve through use.** Simple prompts reveal what's missing or needs updating. The bot and I test them together.
+- **Human in the loop.** I review the agent's work, correct course, and have final review on all PRs.
+
+## How
+
+When I mention `@dyreby-agent` in an issue or PR, a GitHub Action invokes `pi` with the issue or PR number. The agent reads the thread, finds my directive, and executes it—posting responses as the bot.
+
+```
+@dyreby-agent plan how to resolve this
+@dyreby-agent create a pr for this
+@dyreby-agent review the pr
+@dyreby-agent address the feedback
+```
+
+Others can comment and review code. Those become context the agent sees when my mention triggers action.
+
+## Skills
 
 Skills load on-demand based on task. Two types:
 

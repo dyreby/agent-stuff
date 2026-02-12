@@ -8,6 +8,8 @@ Present options when meaningful tradeoffs exist.
 
 Prefer machine-readable CLI output over text parsing.
 
+Load skills proactively when task context matches their description (e.g., load prefs-coding and language prefs before writing or reviewing code).
+
 Use skills listed in "Assumes skill" declarations.
 
 ## Safety / permission

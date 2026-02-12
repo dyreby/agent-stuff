@@ -38,14 +38,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Cache npm
+        uses: actions/cache@v4
         with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install pi
-        run: npm install -g @mariozechner/pi-coding-agent
+          path: ~/.npm
+          key: npm-pi-v1
 
       - name: Setup auth
         env:
@@ -77,4 +74,4 @@ jobs:
           GH_BOT_HUMAN: ${{ vars.GH_BOT_HUMAN }}
           GH_BOT_AGENT: ${{ vars.GH_BOT_AGENT }}
         run: |
-          pi -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}"
+          npx @mariozechner/pi-coding-agent@latest -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}"

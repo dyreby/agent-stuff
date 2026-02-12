@@ -24,7 +24,7 @@ description: Git preferences including commit message format. Use when working w
 - Use professional tone; avoid casual shorthand (LGTM) and emoji
 - Reply to inline PR comments using `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies -X POST -f body="..."`, not `gh pr comment`
 - Include commit link when replying with a fix
-- After addressing review comments, re-request reviewer's review (`gh pr edit --add-reviewer`)
+- Re-request review when changes warrant verification; skip for mechanical fixes answered to satisfaction. When re-requesting, call out what we think they'll care most about
 
 ## Assumes skill
 

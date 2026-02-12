@@ -45,3 +45,9 @@ gh-agent tools:
 - gh_issue_create, gh_issue_comment
 - gh_pr_create, gh_pr_comment, gh_pr_review, gh_pr_request_review
 
+## Collaborators
+
+| Name | GitHub |
+|------|--------|
+| Greg | gdtroszak |
+

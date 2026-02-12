@@ -44,16 +44,6 @@ jobs:
           path: ~/.npm
           key: npm-pi-v1
 
-      - name: Setup auth
-        env:
-          ANTHROPIC_REFRESH_TOKEN: ${{ secrets.ANTHROPIC_REFRESH_TOKEN }}
-        run: |
-          mkdir -p ~/.pi/agent
-          cat > ~/.pi/agent/auth.json << EOF
-          {"anthropic":{"type":"oauth","refresh":"${ANTHROPIC_REFRESH_TOKEN}","access":"","expires":0}}
-          EOF
-          chmod 600 ~/.pi/agent/auth.json
-
       - name: Determine context
         id: context
         run: |
@@ -68,10 +58,17 @@ jobs:
 
       - name: Run pi
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_BOT_APP_ID: ${{ vars.GH_BOT_APP_ID }}
           GH_BOT_INSTALLATION_ID: ${{ vars.GH_BOT_INSTALLATION_ID }}
           GH_BOT_PRIVATE_KEY: ${{ secrets.GH_BOT_PRIVATE_KEY }}
           GH_BOT_HUMAN: ${{ vars.GH_BOT_HUMAN }}
           GH_BOT_AGENT: ${{ vars.GH_BOT_AGENT }}
         run: |
-          npx @mariozechner/pi-coding-agent@latest -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}"
+          npx @mariozechner/pi-coding-agent@latest -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}" 2>&1 | tee /tmp/pi-output.log
+
+      - name: Cost summary
+        if: always()
+        run: |
+          echo "## 💰 Cost Summary" >> $GITHUB_STEP_SUMMARY
+          grep -iE "(token|cost|input|output|cache|\\\$[0-9])" /tmp/pi-output.log >> $GITHUB_STEP_SUMMARY || echo "No cost data found" >> $GITHUB_STEP_SUMMARY

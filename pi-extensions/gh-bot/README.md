@@ -7,7 +7,8 @@ A pi extension that lets you run an AI agent as a GitHub App in your repo. Menti
 - **macOS** for local development (uses Keychain for secrets)
 - **Single repo** where the GitHub App is installed
 - **Personal use** — one human, one agent
-- **Claude MAX** subscription (uses OAuth, not API key)
+- **Claude MAX** subscription for local use (OAuth)
+- **Anthropic API key** for CI (pay-per-use, ~$0.01-0.05 per invocation)
 
 ## Quick Start
 
@@ -24,11 +25,12 @@ pi -e ./pi-extensions/gh-bot
 /gh-bot-setup
 ```
 
-### 3. Sync to GitHub
+### 3. Add GitHub secrets
 
-```
-/gh-bot-sync
-```
+Add to your repo's Settings → Secrets and variables → Actions:
+
+- **Secret**: `ANTHROPIC_API_KEY` — from https://console.anthropic.com
+- **Secret**: `GH_BOT_PRIVATE_KEY` — your GitHub App's private key
 
 ### 4. Use it
 
@@ -57,18 +59,6 @@ Skills drive behavior. The extension only handles auth and confirmation bypass.
 | Command | Description |
 |---------|-------------|
 | `/gh-bot-setup` | Configure GitHub App credentials (stored in `~/.config/gh-bot/` + Keychain) |
-| `/gh-bot-sync` | Push local config to GitHub repo variables/secrets |
-
-## Auth Recovery
-
-If CI fails due to expired Anthropic token:
-
-```bash
-pi -e ./pi-extensions/gh-bot
-/gh-bot-sync
-```
-
-Your local pi has fresh tokens. Sync pushes them to GitHub.
 
 ## Behavioral Differences
 

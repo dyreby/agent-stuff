@@ -157,21 +157,4 @@ export async function deletePrivateKey(): Promise<void> {
   }
 }
 
-// --- Pi Auth Helpers ---
 
-const PI_AUTH_FILE = path.join(os.homedir(), ".pi", "agent", "auth.json");
-
-/**
- * Read the Anthropic refresh token from pi's auth.json.
- * Returns null if file doesn't exist or token not found.
- */
-export async function getAnthropicRefreshToken(): Promise<string | null> {
-  try {
-    const content = await fs.readFile(PI_AUTH_FILE, "utf-8");
-    const parsed = JSON.parse(content);
-    const refresh = parsed?.anthropic?.refresh;
-    return typeof refresh === "string" ? refresh : null;
-  } catch {
-    return null;
-  }
-}

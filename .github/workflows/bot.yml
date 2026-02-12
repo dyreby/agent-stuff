@@ -51,13 +51,15 @@ jobs:
           npx @mariozechner/pi-coding-agent@latest \
             -e ./pi-extensions/gh-bot \
             --mode json \
-            -p "respond to #${{ inputs.number }}" > /tmp/pi-output.json 2>&1 || true
+            -p "respond to #${{ inputs.number }}" > /tmp/pi-output.json 2>&1
 
       - name: Summary
         if: always()
         run: |
           echo "## 🤖 Agent Output" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          jq -r 'select(.type == "message_update" and .assistantMessageEvent.type == "text_delta") | .assistantMessageEvent.delta' /tmp/pi-output.json 2>/dev/null | tr -d '\n' >> $GITHUB_STEP_SUMMARY || cat /tmp/pi-output.json >> $GITHUB_STEP_SUMMARY
+          jq -rj 'select(.type == "message_update" and .assistantMessageEvent.type == "text_delta") | .assistantMessageEvent.delta' /tmp/pi-output.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || cat /tmp/pi-output.json >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "## 💰 Cost" >> $GITHUB_STEP_SUMMARY
+          jq -r 'select(.type == "message_end") | .message.usage | "- Input: \(.inputTokens // "?") | Output: \(.outputTokens // "?") | Cache read: \(.cacheReadInputTokens // 0) | Cache write: \(.cacheCreationInputTokens // 0)"' /tmp/pi-output.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No usage data" >> $GITHUB_STEP_SUMMARY

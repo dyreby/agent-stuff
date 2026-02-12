@@ -288,10 +288,12 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    // Without --gh-agent, extension stays inactive
+    // Without --gh-agent, extension stays inactive and registers no tools
     if (!pi.getFlag("gh-agent")) {
       return;
     }
+
+    registerGhAgentTools(pi);
 
     pi.setActiveTools([
       "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
@@ -306,7 +308,9 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
   pi.on("session_end", async () => {
     await cleanupSandbox();
   });
+}
 
+function registerGhAgentTools(pi: ExtensionAPI) {
   // --- Issue Tools ---
 
   pi.registerTool({

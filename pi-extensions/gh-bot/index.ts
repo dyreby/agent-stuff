@@ -25,6 +25,8 @@ import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 
 let botToken: string | null = null;
 
+const BOT_SYSTEM_PROMPT = "If gh CLI commands fail with 401 or authentication errors, run /gh-bot on to refresh the token.";
+
 // --- Extension ---
 
 export default function ghBotExtension(pi: ExtensionAPI) {
@@ -52,7 +54,9 @@ export default function ghBotExtension(pi: ExtensionAPI) {
           return;
         }
         try {
+          clearTokenCache();
           botToken = await getInstallationToken();
+          pi.setSystemPrompt("gh-bot", BOT_SYSTEM_PROMPT);
           ctx.ui.setStatus("gh-bot", "🤖 bot");
           ctx.ui.notify("GitHub: bot (App)");
           pi.appendEntry("gh-bot", { enabled: true });
@@ -62,6 +66,7 @@ export default function ghBotExtension(pi: ExtensionAPI) {
       } else {
         botToken = null;
         clearTokenCache();
+        pi.setSystemPrompt("gh-bot", undefined);
         ctx.ui.setStatus("gh-bot", undefined);
         ctx.ui.notify("GitHub: you (gh CLI)");
         pi.appendEntry("gh-bot", { enabled: false });
@@ -131,6 +136,7 @@ export default function ghBotExtension(pi: ExtensionAPI) {
     if (lastState?.data?.enabled) {
       try {
         botToken = await getInstallationToken();
+        pi.setSystemPrompt("gh-bot", BOT_SYSTEM_PROMPT);
         ctx.ui.setStatus("gh-bot", "🤖 bot");
       } catch {
         // Silent fail on restore - user can re-enable manually

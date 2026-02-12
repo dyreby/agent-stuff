@@ -3,6 +3,12 @@ name: prefs-git
 description: Git preferences including commit message format. Use when working with git or GitHub.
 ---
 
+## Branching
+
+- Never commit directly to main; create a feature branch first
+- Branch naming: descriptive kebab-case (e.g., `fix-pr-create-tool`)
+- Exception: only commit to main if user explicitly requests it
+
 ## Commit Messages
 
 - Imperative mood ("Add feature" not "Added feature")

@@ -22,6 +22,12 @@ description: Git preferences including commit message format. Use when working w
 - Verify claims against the diff; comments may be stale from development history
 - Use professional tone; avoid casual shorthand (LGTM) and emoji
 
+## Bot-Authored PRs
+
+- Cannot self-approve; leave review as comment and request user review
+- Verify PR is approved before merging (`gh pr view --json reviewDecision`)
+- When replying to inline review comments, reference the addressing commit
+
 ## Assumes skill
 
 - run-improve-agent: when reviewing repos with agent guidance artifacts (skills/, AGENTS.md)

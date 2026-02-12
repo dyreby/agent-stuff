@@ -62,4 +62,4 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "## 💰 Cost" >> $GITHUB_STEP_SUMMARY
-          jq -r 'select(.type == "message_end") | .message.usage | "- Input: \(.inputTokens // "?") | Output: \(.outputTokens // "?") | Cache read: \(.cacheReadInputTokens // 0) | Cache write: \(.cacheCreationInputTokens // 0)"' /tmp/pi-output.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No usage data" >> $GITHUB_STEP_SUMMARY
+          jq -r 'select(.type == "message_end") | .message.usage | "- Input: \(.input // "?") | Output: \(.output // "?") | Cache read: \(.cacheRead // 0) | Cache write: \(.cacheWrite // 0)"' /tmp/pi-output.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No usage data" >> $GITHUB_STEP_SUMMARY

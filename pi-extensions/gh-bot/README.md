@@ -8,7 +8,7 @@ A pi extension that lets you run an AI agent as a GitHub App in your repo. Menti
 - **Single repo** where the GitHub App is installed
 - **Personal use** — one human, one agent
 - **Claude MAX** subscription for local use (OAuth)
-- **Anthropic API key** for CI (pay-per-use, ~$0.01-0.05 per invocation)
+- **Anthropic API key** for CI (pay-per-use)
 
 ## Quick Start
 

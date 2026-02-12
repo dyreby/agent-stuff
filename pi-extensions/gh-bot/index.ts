@@ -25,7 +25,7 @@ import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 
 let botToken: string | null = null;
 
-const BOT_SYSTEM_PROMPT = "If gh CLI commands fail with 401 or authentication errors, run /gh-bot on to refresh the token.";
+const BOT_SYSTEM_PROMPT = "gh 401 errors: run `/gh-bot on` to refresh token";
 
 // --- Extension ---
 

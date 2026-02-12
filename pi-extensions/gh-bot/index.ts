@@ -17,7 +17,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createBashTool } from "@mariozechner/pi-coding-agent";
-import { getInstallationToken } from "./auth.js";
+import { getInstallationToken, getLastPermissions } from "./auth.js";
 import { readConfig, writeConfig, setPrivateKey, getPrivateKey } from "./config.js";
 
 function botSystemPrompt(agent: string): string {
@@ -50,7 +50,11 @@ export default function ghBotExtension(pi: ExtensionAPI) {
       const config = await readConfig();
       agent = config?.agent ?? null;
       botToken = await getInstallationToken();
+      const perms = getLastPermissions();
       ctx.ui.setStatus("gh-bot", "🤖 bot");
+      if (perms) {
+        console.error(`[gh-bot] Token permissions: ${JSON.stringify(perms)}`);
+      }
     } catch (err) {
       ctx.ui.notify(`gh-bot: failed to get token: ${err}`, "error");
     }

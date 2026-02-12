@@ -37,6 +37,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # For PR comments, checkout the PR branch so we test the latest code
+          ref: ${{ github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
 
       - name: Cache npm
         uses: actions/cache@v4
@@ -55,6 +58,20 @@ jobs:
             PREFIX="pr"
           fi
           echo "prompt=respond to $PREFIX #$NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Debug env vars
+        env:
+          GH_BOT_APP_ID: ${{ vars.GH_BOT_APP_ID }}
+          GH_BOT_INSTALLATION_ID: ${{ vars.GH_BOT_INSTALLATION_ID }}
+          GH_BOT_PRIVATE_KEY: ${{ secrets.GH_BOT_PRIVATE_KEY }}
+        run: |
+          echo "APP_ID set: $([ -n \"$GH_BOT_APP_ID\" ] && echo 'yes' || echo 'NO')"
+          echo "APP_ID value: $GH_BOT_APP_ID"
+          echo "INSTALLATION_ID set: $([ -n \"$GH_BOT_INSTALLATION_ID\" ] && echo 'yes' || echo 'NO')"
+          echo "INSTALLATION_ID value: $GH_BOT_INSTALLATION_ID"
+          echo "PRIVATE_KEY set: $([ -n \"$GH_BOT_PRIVATE_KEY\" ] && echo 'yes' || echo 'NO')"
+          echo "PRIVATE_KEY length: ${#GH_BOT_PRIVATE_KEY}"
+          echo "PRIVATE_KEY starts with: $(echo \"$GH_BOT_PRIVATE_KEY\" | head -c 30)"
 
       - name: Run pi
         env:

@@ -46,7 +46,10 @@ function createJwt(appId: number, privateKey: string): string {
 
 interface TokenResponse {
   token: string;
+  permissions?: Record<string, string>;
 }
+
+let lastPermissions: Record<string, string> | null = null;
 
 async function fetchInstallationToken(): Promise<string> {
   const config = await readConfig();
@@ -81,6 +84,7 @@ async function fetchInstallationToken(): Promise<string> {
   }
 
   const data = (await response.json()) as TokenResponse;
+  lastPermissions = data.permissions ?? null;
   return data.token;
 }
 
@@ -105,4 +109,12 @@ export async function getInstallationToken(): Promise<string> {
  */
 export function clearTokenCache(): void {
   cachedToken = null;
+}
+
+/**
+ * Get the permissions from the last token fetch.
+ * Useful for diagnostics.
+ */
+export function getLastPermissions(): Record<string, string> | null {
+  return lastPermissions;
 }

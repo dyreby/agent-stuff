@@ -18,7 +18,7 @@ description: Git preferences including commit message format. Use when working w
 
 ## Pull Requests
 
-- When discussing a PR, read the diff first to understand current state
+- When discussing a PR or issue, check for associated PRs and issues and read relevant diffs first
 - Verify claims against the diff; comments may be stale from development history
 - Use professional tone; avoid casual shorthand (LGTM) and emoji
 

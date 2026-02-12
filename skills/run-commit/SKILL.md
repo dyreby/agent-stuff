@@ -1,6 +1,7 @@
 ---
 name: run-commit
 description: Create a git commit for current changes.
+min-effort: 0
 ---
 
 Assumes skill: prefs-git

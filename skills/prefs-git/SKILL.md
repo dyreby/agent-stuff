@@ -1,6 +1,6 @@
 ---
 name: prefs-git
-description: Git preferences including commit message format. Use when working with git.
+description: Git preferences including commit message format. Use when working with git or GitHub.
 ---
 
 ## Commit Messages

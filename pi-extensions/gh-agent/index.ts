@@ -7,7 +7,7 @@
  * world is GitHub: issues, PRs, comments, and code. It can read and respond to
  * conversations, review diffs, and create PRs — but only through the GitHub API.
  *
- * All GitHub operations go through a configured GitHub App (see --gh-agent-setup).
+ * All GitHub operations go through a configured GitHub App (see /gh-agent-setup command).
  *
  * Without --gh-agent, this extension is invisible and registers no tools.
  *
@@ -40,13 +40,14 @@
  * intentional to allow running tests, builds, and other development commands.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { getInstallationToken, clearTokenCache } from "./auth.js";
+import { getInstallationToken, clearTokenCache, createJwt } from "./auth.js";
+import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 
 // --- Schemas ---
 
@@ -224,7 +225,7 @@ async function gh(
   if (!token) {
     return {
       stdout: "",
-      stderr: "GitHub App not configured. Run with --gh-agent-setup first.",
+      stderr: "GitHub App not configured. Run /gh-agent-setup first.",
       code: 1,
     };
   }
@@ -278,6 +279,198 @@ function sandboxError(message: string): ToolResult {
   return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
 }
 
+// --- Setup Command ---
+
+interface Installation {
+  id: number;
+  account: { login: string; type: string };
+}
+
+interface AppInfo {
+  name: string;
+  slug: string;
+}
+
+async function runSetup(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+  // Check for existing config
+  const existingConfig = await readConfig();
+  if (existingConfig) {
+    const overwrite = await ctx.ui.confirm(
+      "Existing configuration found",
+      "Overwrite existing GitHub App configuration?"
+    );
+    if (!overwrite) {
+      ctx.ui.notify("Setup cancelled", "info");
+      return;
+    }
+  }
+
+  // Show instructions and open browser
+  ctx.ui.notify("Opening GitHub App creation page...", "info");
+  await pi.exec("open", ["https://github.com/settings/apps/new"]);
+
+  // Wait for user to create app
+  const ready = await ctx.ui.confirm(
+    "GitHub App Setup",
+    `Create a GitHub App with these permissions:
+• Repository > Issues: Read & write
+• Repository > Pull requests: Read & write
+• Repository > Contents: Read-only
+
+After creating, click "Install App" and install on your account.
+
+Press Enter when ready...`
+  );
+  if (!ready) {
+    ctx.ui.notify("Setup cancelled", "info");
+    return;
+  }
+
+  // Get App ID
+  const appIdStr = await ctx.ui.input("Enter App ID (from app settings page):", "");
+  if (!appIdStr) {
+    ctx.ui.notify("Setup cancelled: App ID required", "error");
+    return;
+  }
+  const appId = parseInt(appIdStr, 10);
+  if (isNaN(appId) || appId <= 0) {
+    ctx.ui.notify("Setup cancelled: Invalid App ID", "error");
+    return;
+  }
+
+  // Get private key path
+  let privateKey: string | null = null;
+  while (!privateKey) {
+    const pemPath = await ctx.ui.input("Enter path to private key (.pem):", "~/Downloads/");
+    if (!pemPath) {
+      ctx.ui.notify("Setup cancelled: Private key required", "error");
+      return;
+    }
+
+    // Expand ~ to home directory
+    const expandedPath = pemPath.startsWith("~/")
+      ? path.join(os.homedir(), pemPath.slice(2))
+      : pemPath;
+
+    try {
+      privateKey = await fs.readFile(expandedPath, "utf-8");
+      if (!privateKey.includes("-----BEGIN RSA PRIVATE KEY-----") &&
+          !privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+        ctx.ui.notify("Invalid .pem file: not a valid private key", "error");
+        privateKey = null;
+        continue;
+      }
+    } catch (err) {
+      ctx.ui.notify(`Could not read file: ${(err as Error).message}`, "error");
+      const retry = await ctx.ui.confirm("Retry?", "Enter a different path?");
+      if (!retry) {
+        ctx.ui.notify("Setup cancelled", "info");
+        return;
+      }
+    }
+  }
+
+  // Store private key in Keychain
+  ctx.ui.notify("Storing private key in Keychain...", "info");
+  try {
+    await setPrivateKey(privateKey);
+  } catch (err) {
+    ctx.ui.notify(`Failed to store private key: ${(err as Error).message}`, "error");
+    return;
+  }
+
+  // Fetch installations
+  ctx.ui.notify("Fetching installations...", "info");
+  const jwt = createJwt(appId, privateKey);
+
+  let installations: Installation[];
+  try {
+    const response = await fetch("https://api.github.com/app/installations", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${jwt}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      ctx.ui.notify(`GitHub API error (${response.status}): ${body}`, "error");
+      return;
+    }
+
+    installations = await response.json() as Installation[];
+  } catch (err) {
+    ctx.ui.notify(`Failed to fetch installations: ${(err as Error).message}`, "error");
+    return;
+  }
+
+  if (installations.length === 0) {
+    ctx.ui.notify(
+      "No installations found. Install the app on your account first, then re-run /gh-agent-setup",
+      "error"
+    );
+    return;
+  }
+
+  // Select installation
+  let installationId: number;
+  if (installations.length === 1) {
+    installationId = installations[0].id;
+    ctx.ui.notify(`Found installation for ${installations[0].account.login}`, "info");
+  } else {
+    const options = installations.map(
+      (i) => `${i.account.login} (${i.account.type})`
+    );
+    const choice = await ctx.ui.select("Select installation:", options);
+    if (choice === undefined) {
+      ctx.ui.notify("Setup cancelled", "info");
+      return;
+    }
+    const selectedIndex = options.indexOf(choice);
+    installationId = installations[selectedIndex].id;
+  }
+
+  // Validate credentials with GET /app
+  ctx.ui.notify("Validating credentials...", "info");
+  let appInfo: AppInfo;
+  try {
+    const response = await fetch("https://api.github.com/app", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${jwt}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      ctx.ui.notify(`Validation failed (${response.status}): ${body}`, "error");
+      return;
+    }
+
+    appInfo = await response.json() as AppInfo;
+  } catch (err) {
+    ctx.ui.notify(`Validation failed: ${(err as Error).message}`, "error");
+    return;
+  }
+
+  // Save config
+  try {
+    await writeConfig({ appId, installationId });
+  } catch (err) {
+    ctx.ui.notify(`Failed to save config: ${(err as Error).message}`, "error");
+    return;
+  }
+
+  // Success
+  ctx.ui.notify(`✓ Authenticated as ${appInfo.name}[bot]`, "success");
+  ctx.ui.notify(`✓ Config saved to ~/.config/gh-agent/config.json`, "info");
+  ctx.ui.notify("You can now delete the .pem file", "info");
+}
+
 // --- Extension ---
 
 export default function ghAgentExtension(pi: ExtensionAPI) {
@@ -285,6 +478,15 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
     description: "Enable GitHub agent mode (GitHub App auth, sandboxed workspace)",
     type: "boolean",
     default: false,
+  });
+
+  // --- Setup Command ---
+
+  pi.registerCommand("gh-agent-setup", {
+    description: "Configure GitHub App authentication",
+    handler: async (_args, ctx) => {
+      await runSetup(pi, ctx);
+    },
   });
 
   pi.on("session_start", async (_event, ctx) => {

@@ -16,12 +16,12 @@ let cachedToken: string | null = null;
 
 // --- JWT Signing (RS256) ---
 
-function base64url(input: string | Buffer): string {
+export function base64url(input: string | Buffer): string {
   const buf = typeof input === "string" ? Buffer.from(input, "utf-8") : input;
   return buf.toString("base64url");
 }
 
-function createJwt(appId: number, privateKey: string): string {
+export function createJwt(appId: number, privateKey: string): string {
   const now = Math.floor(Date.now() / 1000);
 
   const header = { alg: "RS256", typ: "JWT" };

@@ -46,7 +46,6 @@ function createJwt(appId: number, privateKey: string): string {
 
 interface TokenResponse {
   token: string;
-  expires_at: string;
 }
 
 async function fetchInstallationToken(): Promise<string> {
@@ -73,6 +72,7 @@ async function fetchInstallationToken(): Promise<string> {
       Authorization: `Bearer ${jwt}`,
       "X-GitHub-Api-Version": "2022-11-28",
     },
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {

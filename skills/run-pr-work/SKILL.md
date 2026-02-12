@@ -14,6 +14,7 @@ Procedure for responding to PR feedback or fixing PR issues.
 - "Address the comment in PR #X"
 - "Fix CI on #X"
 - "Update PR #X with..."
+- "I responded to the review" / "I left comments on the PR"
 
 ## Procedure
 
@@ -23,3 +24,5 @@ Procedure for responding to PR feedback or fixing PR issues.
 4. Make changes: implement requested fixes
 5. Iterate with user to match expectations
 6. Commit and push (with confirmation per prefs-git)
+7. Reply to inline comments referencing the addressing commit
+8. When all comments addressed: request user review again

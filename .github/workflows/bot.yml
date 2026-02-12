@@ -1,0 +1,78 @@
+name: Roger Roger
+
+# Trigger on issue/PR activity that might contain a directive
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: bot
+  cancel-in-progress: false
+
+jobs:
+  respond:
+    runs-on: ubuntu-latest
+
+    # Gate: only run when human creates content mentioning @agent
+    #
+    # Each event type stores user and body in different locations:
+    #   issue_comment             → comment.user.login, comment.body
+    #   issues                    → issue.user.login, issue.body
+    #   pull_request_review       → review.user.login, review.body
+    #   pull_request_review_comment → comment.user.login, comment.body
+    #
+    # This condition is evaluated before a runner starts (efficient).
+    if: |
+      (github.event_name == 'issue_comment' && github.event.comment.user.login == vars.GH_BOT_HUMAN && contains(github.event.comment.body, format('@{0}', vars.GH_BOT_AGENT))) ||
+      (github.event_name == 'issues' && github.event.issue.user.login == vars.GH_BOT_HUMAN && contains(github.event.issue.body, format('@{0}', vars.GH_BOT_AGENT))) ||
+      (github.event_name == 'pull_request_review' && github.event.review.user.login == vars.GH_BOT_HUMAN && contains(github.event.review.body, format('@{0}', vars.GH_BOT_AGENT))) ||
+      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login == vars.GH_BOT_HUMAN && contains(github.event.comment.body, format('@{0}', vars.GH_BOT_AGENT)))
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install pi
+        run: npm install -g @mariozechner/pi-coding-agent
+
+      - name: Setup auth
+        env:
+          ANTHROPIC_REFRESH_TOKEN: ${{ secrets.ANTHROPIC_REFRESH_TOKEN }}
+        run: |
+          mkdir -p ~/.pi/agent
+          cat > ~/.pi/agent/auth.json << EOF
+          {"anthropic":{"type":"oauth","refresh":"${ANTHROPIC_REFRESH_TOKEN}","access":"","expires":0}}
+          EOF
+          chmod 600 ~/.pi/agent/auth.json
+
+      - name: Determine context
+        id: context
+        run: |
+          if [ -n "${{ github.event.issue.number }}" ]; then
+            NUM="${{ github.event.issue.number }}"
+            [[ -n "${{ github.event.issue.pull_request }}" ]] && PREFIX="pr" || PREFIX="issue"
+          else
+            NUM="${{ github.event.pull_request.number }}"
+            PREFIX="pr"
+          fi
+          echo "prompt=respond to $PREFIX #$NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Run pi
+        env:
+          GH_BOT_APP_ID: ${{ vars.GH_BOT_APP_ID }}
+          GH_BOT_INSTALLATION_ID: ${{ vars.GH_BOT_INSTALLATION_ID }}
+          GH_BOT_PRIVATE_KEY: ${{ secrets.GH_BOT_PRIVATE_KEY }}
+        run: |
+          pi -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}"

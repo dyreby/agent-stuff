@@ -1,48 +1,56 @@
 /**
  * GitHub Bot Extension
  *
- * Provides a GitHub identity toggle via spawnHook:
- * - `/gh-bot off` (default): GitHub operations use your personal `gh` CLI auth
- * - `/gh-bot on`: GitHub operations use GitHub App credentials (appears as bot)
+ * Provides GitHub App authentication for bot mode. When loaded, all `gh` CLI
+ * commands authenticate as the GitHub App instead of your personal account.
  *
- * Overrides the bash tool to inject GH_TOKEN when bot mode is active. Any
- * `gh` CLI commands the LLM runs via bash will authenticate as the bot.
+ * Intended for use via explicit path invocation (not auto-loaded):
+ *   pi -e ./pi-extensions/gh-bot -p "issue #5: create a pr"
  *
- * Usage:
- *   pi -e ./pi-extensions/gh-bot
+ * Credentials are read from environment variables (CI) or macOS Keychain (local):
+ *   - GH_BOT_APP_ID
+ *   - GH_BOT_INSTALLATION_ID
+ *   - GH_BOT_PRIVATE_KEY
  *
- * Commands:
- *   /gh-bot [on|off]     - Toggle bot identity for GitHub operations
- *   /gh-bot-setup        - Configure GitHub App credentials (appId, installationId, private key)
+ * For setup, run: /gh-bot-setup
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createBashTool } from "@mariozechner/pi-coding-agent";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { getInstallationToken, clearTokenCache } from "./auth.js";
-import { readConfig, writeConfig, setPrivateKey } from "./config.js";
+import { spawn } from "node:child_process";
+import { getInstallationToken } from "./auth.js";
+import { readConfig, writeConfig, setPrivateKey, getPrivateKey, getAnthropicRefreshToken } from "./config.js";
 
-// --- State ---
-
-let botToken: string | null = null;
-
-const BOT_SYSTEM_PROMPT_SNIPPET = "\n\ngh auth errors: run `/gh-bot on` to refresh token";
-
-// Load prefs-bot skill content once at startup
-const PREFS_BOT_PATH = join(homedir(), ".pi/agent/skills/prefs-bot/SKILL.md");
-let prefsBotContent: string | null = null;
-try {
-  prefsBotContent = readFileSync(PREFS_BOT_PATH, "utf-8");
-} catch {
-  // Skill not found - will skip injection
+/** Run gh command with value piped to stdin (for secrets) */
+async function ghSecretSet(name: string, value: string, repo: string): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn("gh", ["secret", "set", name, `--repo=${repo}`], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stderr = "";
+    proc.stderr.on("data", (data) => { stderr += data.toString(); });
+    proc.on("error", (err) => resolve({ code: 1, stderr: err.message }));
+    proc.on("close", (code) => resolve({ code: code ?? 1, stderr }));
+    proc.stdin.write(value);
+    proc.stdin.end();
+  });
 }
 
-// --- Extension ---
+function botSystemPrompt(agent: string): string {
+  return `
+## Bot Mode
+
+Confirmations for externally-visible actions (push, comment, review, etc.) are pre-approved. Execute directly.
+
+When responding to issues or PRs, look for \`@${agent}\` mentions. The text following the mention is the prompt—execute it as if the human typed it directly.
+`;
+}
 
 export default function ghBotExtension(pi: ExtensionAPI) {
-  // Register bash tool with spawnHook to inject GH_TOKEN when bot mode is active
+  let botToken: string | null = null;
+  let agent: string | null = null;
+
+  // Register bash tool with spawnHook to inject GH_TOKEN
   const bashTool = createBashTool(process.cwd(), {
     spawnHook: ({ command, cwd, env }) => ({
       command,
@@ -52,115 +60,216 @@ export default function ghBotExtension(pi: ExtensionAPI) {
   });
   pi.registerTool(bashTool);
 
-  // Inject bot mode content into system prompt when active
-  pi.on("before_agent_start", async (event) => {
-    if (botToken) {
-      let additions = BOT_SYSTEM_PROMPT_SNIPPET;
-      if (prefsBotContent) {
-        additions += "\n\n" + prefsBotContent;
-      }
-      return { systemPrompt: event.systemPrompt + additions };
+  // Fetch token and activate on session start
+  pi.on("session_start", async (_event, ctx) => {
+    try {
+      const config = await readConfig();
+      agent = config?.agent ?? null;
+      botToken = await getInstallationToken();
+      ctx.ui.setStatus("gh-bot", "🤖 bot");
+    } catch (err) {
+      ctx.ui.notify(`gh-bot: failed to get token: ${err}`, "error");
     }
   });
 
-  // Toggle command
-  pi.registerCommand("gh-bot", {
-    description: "Toggle GitHub bot identity (on/off)",
-    handler: async (args, ctx) => {
-      const arg = args?.trim().toLowerCase();
-      const wantsOn = arg === "on" || (!arg && !botToken);
-
-      if (wantsOn) {
-        const config = await readConfig();
-        if (!config) {
-          ctx.ui.notify("GitHub App not configured. Run /gh-bot-setup first.", "error");
-          return;
-        }
-        try {
-          clearTokenCache();
-          botToken = await getInstallationToken();
-          ctx.ui.setStatus("gh-bot", "🤖 bot");
-          ctx.ui.notify("GitHub: bot (App)");
-          pi.appendEntry("gh-bot", { enabled: true });
-        } catch (err) {
-          ctx.ui.notify(`Failed to get bot token: ${err}`, "error");
-        }
-      } else {
-        botToken = null;
-        clearTokenCache();
-        ctx.ui.setStatus("gh-bot", undefined);
-        ctx.ui.notify("GitHub: you (gh CLI)");
-        pi.appendEntry("gh-bot", { enabled: false });
-      }
-    },
+  // Inject bot mode into system prompt
+  pi.on("before_agent_start", async (event) => {
+    if (botToken && agent) {
+      return { systemPrompt: event.systemPrompt + botSystemPrompt(agent) };
+    }
   });
 
-  // Setup command
+  // Setup command for GitHub App configuration
   pi.registerCommand("gh-bot-setup", {
     description: "Configure GitHub App credentials for bot mode",
     handler: async (_args, ctx) => {
       ctx.ui.notify("GitHub App Setup", "info");
       ctx.ui.notify("Create or manage GitHub Apps: https://github.com/settings/apps", "info");
 
-      // App ID
-      const appIdStr = await ctx.ui.input("App ID:", "");
-      if (!appIdStr) {
-        ctx.ui.notify("Setup cancelled", "warning");
-        return;
+      // Load existing config for defaults
+      const existing = await readConfig();
+
+      // Get current gh user for human/agent defaults (without bot token)
+      let ghUser: string | null = null;
+      try {
+        const result = await pi.exec("gh", ["api", "user", "--jq", ".login"]);
+        if (result.code === 0 && result.stdout.trim()) {
+          ghUser = result.stdout.trim();
+        }
+      } catch {
+        // Ignore - will just not have defaults
       }
+
+      // Get current repo for default
+      let currentRepo: string | null = null;
+      try {
+        const result = await pi.exec("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+        if (result.code === 0 && result.stdout.trim()) {
+          currentRepo = result.stdout.trim();
+        }
+      } catch {
+        // Ignore - will just not have default
+      }
+
+      // Helper to prompt with default, returning value or default
+      const promptWithDefault = async (
+        label: string,
+        defaultValue: string | undefined,
+        required: boolean
+      ): Promise<string | null> => {
+        const displayDefault = defaultValue ?? "";
+        const title = displayDefault ? `${label} [${displayDefault}]:` : `${label}:`;
+        const result = await ctx.ui.input(title, displayDefault);
+        const value = result?.trim() || defaultValue;
+        if (!value && required) {
+          ctx.ui.notify(`${label} is required (no default available)`, "error");
+          return null;
+        }
+        return value ?? null;
+      };
+
+      // App ID (required, error if no default and empty)
+      const appIdDefault = existing?.appId?.toString();
+      const appIdStr = await promptWithDefault("App ID", appIdDefault, true);
+      if (!appIdStr) return;
       const appId = parseInt(appIdStr, 10);
       if (isNaN(appId) || appId <= 0) {
         ctx.ui.notify("Invalid App ID (must be a positive number)", "error");
         return;
       }
 
-      // Installation ID
-      const installIdStr = await ctx.ui.input("Installation ID:", "");
-      if (!installIdStr) {
-        ctx.ui.notify("Setup cancelled", "warning");
-        return;
-      }
+      // Installation ID (required, error if no default and empty)
+      const installIdDefault = existing?.installationId?.toString();
+      const installIdStr = await promptWithDefault("Installation ID", installIdDefault, true);
+      if (!installIdStr) return;
       const installationId = parseInt(installIdStr, 10);
       if (isNaN(installationId) || installationId <= 0) {
         ctx.ui.notify("Invalid Installation ID (must be a positive number)", "error");
         return;
       }
 
-      // Private key (multi-line PEM)
-      const privateKey = await ctx.ui.editor(
-        "Paste your GitHub App private key (PEM format):",
-        ""
-      );
+      // Human (default to gh user)
+      const humanDefault = existing?.human ?? ghUser ?? undefined;
+      const human = await promptWithDefault("Human (your GitHub login)", humanDefault, true);
+      if (!human) return;
+
+      // Agent (default to gh user + "-agent", this is the GitHub App name)
+      const agentDefault = existing?.agent ?? (ghUser ? `${ghUser}-agent` : undefined);
+      const agentName = await promptWithDefault("Agent (GitHub App name)", agentDefault, true);
+      if (!agentName) return;
+
+      // Target repo (default to current repo)
+      const repoDefault = existing?.repo ?? currentRepo ?? undefined;
+      const repo = await promptWithDefault("Target repo (owner/repo)", repoDefault, true);
+      if (!repo) return;
+      if (!repo.includes("/")) {
+        ctx.ui.notify("Invalid repo format (must be owner/repo)", "error");
+        return;
+      }
+
+      // Private key (multi-line PEM) - only prompt if not already set
+      const existingKey = await getPrivateKey();
+      let privateKey = existingKey;
+      if (existingKey) {
+        const updateKey = await ctx.ui.confirm("Private key exists", "Update the private key?");
+        if (updateKey) {
+          privateKey = await ctx.ui.editor("Paste your GitHub App private key (PEM format):", "");
+        }
+      } else {
+        privateKey = await ctx.ui.editor("Paste your GitHub App private key (PEM format):", "");
+      }
+
       if (!privateKey || !privateKey.includes("-----BEGIN") || !privateKey.includes("-----END")) {
         ctx.ui.notify("Invalid or empty private key", "error");
         return;
       }
 
-      // Store credentials (key first, so partial failure doesn't leave broken config)
+      // Store credentials
       try {
-        await setPrivateKey(privateKey);
-        await writeConfig({ appId, installationId });
-        ctx.ui.notify("GitHub App configured successfully! Use /gh-bot on to enable.", "info");
+        if (privateKey !== existingKey) {
+          await setPrivateKey(privateKey);
+        }
+        await writeConfig({ appId, installationId, human, agent: agentName, repo });
+        ctx.ui.notify("GitHub App configured successfully!", "info");
+        
+        // Activate immediately
+        botToken = await getInstallationToken();
+        ctx.ui.setStatus("gh-bot", "🤖 bot");
       } catch (err) {
         ctx.ui.notify(`Failed to save config: ${err}`, "error");
       }
     },
   });
 
-  // Restore state on session resume
-  pi.on("session_start", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getEntries();
-    const lastState = entries
-      .filter((e) => e.type === "custom" && e.customType === "gh-bot")
-      .pop();
-
-    if (lastState?.data?.enabled) {
-      try {
-        botToken = await getInstallationToken();
-        ctx.ui.setStatus("gh-bot", "🤖 bot");
-      } catch {
-        // Silent fail on restore - user can re-enable manually
+  // Sync command to push local config to GitHub secrets/variables
+  pi.registerCommand("gh-bot-sync", {
+    description: "Sync local GitHub App config to GitHub repo secrets/variables",
+    handler: async (_args, ctx) => {
+      // Read all local sources
+      const config = await readConfig();
+      if (!config || !config.appId || !config.installationId || !config.human || !config.agent || !config.repo) {
+        ctx.ui.notify("Missing config. Run /gh-bot-setup first.", "error");
+        return;
       }
-    }
+
+      const privateKey = await getPrivateKey();
+      if (!privateKey) {
+        ctx.ui.notify("Private key not found in Keychain. Run /gh-bot-setup first.", "error");
+        return;
+      }
+
+      const anthropicToken = await getAnthropicRefreshToken();
+      if (!anthropicToken) {
+        ctx.ui.notify("Anthropic refresh token not found in ~/.pi/agent/auth.json", "error");
+        return;
+      }
+
+      // Show summary (names only, no values)
+      ctx.ui.notify(`Target: ${config.repo}`, "info");
+      ctx.ui.notify("Variables: GH_BOT_APP_ID, GH_BOT_INSTALLATION_ID, GH_BOT_HUMAN, GH_BOT_AGENT", "info");
+      ctx.ui.notify("Secrets: GH_BOT_PRIVATE_KEY, ANTHROPIC_REFRESH_TOKEN", "info");
+
+      const confirmed = await ctx.ui.confirm("Sync to GitHub?", `Push all variables and secrets to ${config.repo}?`);
+      if (!confirmed) {
+        ctx.ui.notify("Sync cancelled", "warning");
+        return;
+      }
+
+      const repoArg = `--repo=${config.repo}`;
+
+      // Set variables
+      const variables = [
+        ["GH_BOT_APP_ID", config.appId.toString()],
+        ["GH_BOT_INSTALLATION_ID", config.installationId.toString()],
+        ["GH_BOT_HUMAN", config.human],
+        ["GH_BOT_AGENT", config.agent],
+      ];
+
+      for (const [name, value] of variables) {
+        const result = await pi.exec("gh", ["variable", "set", name, "--body", value, repoArg]);
+        if (result.code !== 0) {
+          ctx.ui.notify(`Failed to set ${name}: ${result.stderr}`, "error");
+          return;
+        }
+        ctx.ui.notify(`✓ ${name}`, "info");
+      }
+
+      // Set secrets (pipe via stdin to avoid command-line exposure)
+      const secrets = [
+        ["GH_BOT_PRIVATE_KEY", privateKey],
+        ["ANTHROPIC_REFRESH_TOKEN", anthropicToken],
+      ];
+
+      for (const [name, value] of secrets) {
+        const result = await ghSecretSet(name, value, config.repo);
+        if (result.code !== 0) {
+          ctx.ui.notify(`Failed to set ${name}: ${result.stderr}`, "error");
+          return;
+        }
+        ctx.ui.notify(`✓ ${name} (secret)`, "info");
+      }
+
+      ctx.ui.notify("Sync complete!", "info");
+    },
   });
 }

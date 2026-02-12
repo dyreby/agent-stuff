@@ -32,6 +32,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { getInstallationToken, clearTokenCache } from "./auth.js";
+import { readConfig } from "./config.js";
 
 // --- State ---
 
@@ -210,12 +211,17 @@ export default function ghBotExtension(pi: ExtensionAPI) {
     description: "Toggle GitHub bot identity (on/off)",
     handler: async (args, ctx) => {
       const arg = args?.trim().toLowerCase();
-      if (arg === "on") {
+      const wantsOn = arg === "on" || (!arg && !useBotAuth);
+
+      if (wantsOn) {
+        const config = await readConfig();
+        if (!config) {
+          ctx.ui.notify("GitHub App not configured. Run /gh-bot-setup first.", "error");
+          return;
+        }
         useBotAuth = true;
-      } else if (arg === "off") {
-        useBotAuth = false;
       } else {
-        useBotAuth = !useBotAuth;
+        useBotAuth = false;
       }
 
       ctx.ui.setStatus("gh-bot", useBotAuth ? "🤖 bot" : undefined);

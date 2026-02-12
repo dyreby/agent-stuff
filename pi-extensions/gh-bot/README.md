@@ -1,6 +1,6 @@
 # gh-bot Extension
 
-A pi extension that lets you run an AI agent as a GitHub App in your repo. Mention `@<agent>` in any issue or PR comment, and the agent responds—using the same skills and behavior as when you run pi locally.
+A pi extension that lets you run an AI agent as a GitHub App in your repo. Trigger it via workflow dispatch, and the agent responds—using the same skills and behavior as when you run pi locally.
 
 ## Assumptions
 
@@ -34,23 +34,22 @@ Add to your repo's Settings → Secrets and variables → Actions:
 
 ### 4. Use it
 
-Comment on any issue or PR:
+Go to Actions → "Roger Roger" → Run workflow. Enter an issue or PR number and your prompt:
 
 ```
-@<agent> create a pr for this
-@<agent> review the pr
-@<agent> what do you think about this approach
+create a pr for this
+review the pr
+what do you think about this approach
 ```
-
-The text after `@<agent>` becomes the prompt—identical to what you'd type in pi locally.
 
 ## How It Works
 
-1. You comment with `@<agent> <prompt>`
-2. GitHub Action triggers, passes `respond to issue #N` to pi
-3. pi (with this extension) authenticates as the GitHub App
-4. Agent reads the issue/PR, finds your `@<agent>` directive, executes it
-5. Responses post as the GitHub App
+1. You trigger the workflow with an issue/PR number and prompt
+2. Workflow posts a comment recording your prompt (audit trail)
+3. Workflow invokes pi with `respond to #N`
+4. pi (with this extension) authenticates as the GitHub App
+5. Agent reads the issue/PR and executes the prompt
+6. Responses post as the GitHub App
 
 Skills drive behavior. The extension only handles auth and confirmation bypass.
 

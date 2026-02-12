@@ -1,6 +1,7 @@
 ---
 name: run-improve-agent
 description: Evolve agent guidance artifacts. Use when adding, refining, or fixing skills, AGENTS.md, or extensions.
+min-effort: 2
 ---
 
 Assumes skill: prefs-agent

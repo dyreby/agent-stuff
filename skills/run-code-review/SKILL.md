@@ -1,6 +1,7 @@
 ---
 name: run-code-review
 description: Procedure for reviewing code changes.
+min-effort: 1
 ---
 
 Assumes skill: prefs-code-review, prefs-git

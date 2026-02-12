@@ -16,7 +16,7 @@
  */
 
 import * as fs from "node:fs/promises";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -60,7 +60,7 @@ export default function skillModelExtension(pi: ExtensionAPI) {
   let maxEffort = -1; // -1 = no run-* skill loaded yet
   let applied = false;
 
-  async function applyEffort(effort: number, ctx: { ui: { notify: (msg: string, level: string) => void }; modelRegistry: { find: (provider: string, substring: string) => unknown } }) {
+  async function applyEffort(effort: number, ctx: ExtensionContext) {
     const mapping = EFFORT_MAP[effort];
     if (!mapping) return;
 

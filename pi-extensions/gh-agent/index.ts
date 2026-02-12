@@ -3,19 +3,19 @@
  *
  * An agent that only sees the world through GitHub.
  *
- * When you activate this extension, you're talking to an agent whose entire
- * view of the world is GitHub: issues, PRs, comments, and code. It can read
- * and respond to conversations, review diffs, and create PRs — but only
- * through the GitHub API.
+ * When --gh-agent is enabled, you're talking to an agent whose entire view of the
+ * world is GitHub: issues, PRs, comments, and code. It can read and respond to
+ * conversations, review diffs, and create PRs — but only through the GitHub API.
  *
- * By default, the agent uses your `gh` CLI credentials (from `gh auth login`).
- * In --gh-only mode, it requires a configured GitHub App (see --setup-app).
+ * All GitHub operations go through a configured GitHub App (see --gh-agent-setup).
+ *
+ * Without --gh-agent, this extension is invisible and registers no tools.
  *
  * Usage:
- *   pi -e ./pi-extensions/gh-agent.ts           # Default: local + GitHub tools
- *   pi -e ./pi-extensions/gh-agent.ts --gh-only # GitHub-only: sandboxed temp workspace
+ *   pi -e ./pi-extensions/gh-agent.ts             # No-op (extension inactive)
+ *   pi -e ./pi-extensions/gh-agent.ts --gh-agent  # GitHub-only: sandboxed workspace
  *
- * Tools (all modes):
+ * Tools (--gh-agent mode):
  *   gh_issue_list        - List issues
  *   gh_issue_read        - Get issue details + comments
  *   gh_issue_comment     - Post comment on issue
@@ -27,15 +27,13 @@
  *   gh_pr_comment        - Post comment on PR
  *   gh_pr_request_review - Request reviewers on a PR
  *   gh_pr_review         - Submit a review (approve, request changes, comment)
- *
- * Tools (--gh-only mode only):
- *   read             - Read local files (for skills/context)
- *   gh_file_read     - Fetch file from GitHub
- *   gh_clone         - Clone repo to sandboxed temp directory
- *   tmp_read         - Read file in sandbox
- *   tmp_write        - Write file in sandbox
- *   tmp_exec         - Execute command in sandbox
- *   tmp_list         - List directory in sandbox
+ *   read                 - Read local files (for skills/context)
+ *   gh_file_read         - Fetch file from GitHub
+ *   gh_clone             - Clone repo to sandboxed temp directory
+ *   tmp_read             - Read file in sandbox
+ *   tmp_write            - Write file in sandbox
+ *   tmp_exec             - Execute command in sandbox
+ *   tmp_list             - List directory in sandbox
  *
  * Security note: tmp_exec commands run with cwd locked to the sandbox, but can
  * still access paths outside via absolute paths (e.g., /etc/passwd). This is
@@ -208,26 +206,9 @@ function ghResultText(result: ExecResult, text: string, details?: Record<string,
   return { content: [{ type: "text", text }], details };
 }
 
-// Cached token for default mode (gh auth token)
-let cachedGhCliToken: string | null = null;
-
-async function getToken(pi: ExtensionAPI): Promise<string | null> {
-  // --gh-only mode requires GitHub App authentication
-  if (pi.getFlag("gh-only")) {
-    // getInstallationToken() handles its own caching with auto-refresh
-    return await getInstallationToken();
-  }
-
-  // Default mode: use gh CLI's stored credentials
-  if (cachedGhCliToken) return cachedGhCliToken;
-
-  const result = await pi.exec("gh", ["auth", "token"]);
-  if (result.code === 0 && result.stdout.trim()) {
-    cachedGhCliToken = result.stdout.trim();
-    return cachedGhCliToken;
-  }
-
-  return null;
+async function getToken(): Promise<string | null> {
+  // getInstallationToken() handles its own caching with auto-refresh
+  return await getInstallationToken();
 }
 
 function isAuthError(stderr: string): boolean {
@@ -239,11 +220,11 @@ async function gh(
   args: string[],
   signal?: AbortSignal
 ): Promise<ExecResult> {
-  const token = await getToken(pi);
+  const token = await getToken();
   if (!token) {
     return {
       stdout: "",
-      stderr: "No GitHub credentials found. Run `gh auth login` or configure GitHub App.",
+      stderr: "GitHub App not configured. Run with --gh-agent-setup first.",
       code: 1,
     };
   }
@@ -254,9 +235,9 @@ async function gh(
   });
 
   // Retry once on auth error (token may have expired)
-  if (result.code !== 0 && isAuthError(result.stderr) && pi.getFlag("gh-only")) {
+  if (result.code !== 0 && isAuthError(result.stderr)) {
     clearTokenCache();
-    const newToken = await getToken(pi);
+    const newToken = await getToken();
     if (newToken && newToken !== token) {
       return pi.exec("gh", args, {
         signal,
@@ -300,23 +281,26 @@ function sandboxError(message: string): ToolResult {
 // --- Extension ---
 
 export default function ghAgentExtension(pi: ExtensionAPI) {
-  pi.registerFlag("gh-only", {
-    description: "Disable local tools, use GitHub API only",
+  pi.registerFlag("gh-agent", {
+    description: "Enable GitHub agent mode (GitHub App auth, sandboxed workspace)",
     type: "boolean",
     default: false,
   });
 
+  // Without --gh-agent, no tools registered, no event handlers attached
+  if (!pi.getFlag("gh-agent")) {
+    return;
+  }
+
   pi.on("session_start", async (_event, ctx) => {
-    if (pi.getFlag("gh-only")) {
-      pi.setActiveTools([
-        "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
-        "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_create", "gh_pr_comment",
-        "gh_pr_request_review", "gh_pr_review",
-        "read", "gh_file_read", "gh_clone",
-        "tmp_read", "tmp_write", "tmp_exec", "tmp_list",
-      ]);
-      ctx.ui.notify("GitHub-only mode: sandboxed workspace enabled", "info");
-    }
+    pi.setActiveTools([
+      "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
+      "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_create", "gh_pr_comment",
+      "gh_pr_request_review", "gh_pr_review",
+      "read", "gh_file_read", "gh_clone",
+      "tmp_read", "tmp_write", "tmp_exec", "tmp_list",
+    ]);
+    ctx.ui.notify("GitHub agent mode: sandboxed workspace enabled", "info");
   });
 
   pi.on("session_end", async () => {

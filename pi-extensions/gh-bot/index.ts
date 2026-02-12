@@ -24,44 +24,17 @@ import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 // --- State ---
 
 let botToken: string | null = null;
-let tokenAcquiredAt: number | null = null;
-
-// Token refresh threshold (50 min) - installation tokens expire after 1 hour
-const TOKEN_REFRESH_MS = 50 * 60 * 1000;
-
-// --- Helpers ---
-
-function isTokenStale(): boolean {
-  if (!tokenAcquiredAt) return true;
-  return Date.now() - tokenAcquiredAt > TOKEN_REFRESH_MS;
-}
-
-async function refreshToken(): Promise<void> {
-  clearTokenCache();
-  botToken = await getInstallationToken();
-  tokenAcquiredAt = Date.now();
-}
 
 // --- Extension ---
 
 export default function ghBotExtension(pi: ExtensionAPI) {
   // Register bash tool with spawnHook to inject GH_TOKEN when bot mode is active
-  // spawnHook is async to support proactive token refresh before expiry
   const bashTool = createBashTool(process.cwd(), {
-    spawnHook: async ({ command, cwd, env }) => {
-      if (botToken && isTokenStale()) {
-        try {
-          await refreshToken();
-        } catch {
-          // If refresh fails, continue with existing token - it might still work
-        }
-      }
-      return {
-        command,
-        cwd,
-        env: botToken ? { ...env, GH_TOKEN: botToken } : env,
-      };
-    },
+    spawnHook: ({ command, cwd, env }) => ({
+      command,
+      cwd,
+      env: botToken ? { ...env, GH_TOKEN: botToken } : env,
+    }),
   });
   pi.registerTool(bashTool);
 
@@ -79,9 +52,7 @@ export default function ghBotExtension(pi: ExtensionAPI) {
           return;
         }
         try {
-          clearTokenCache();
           botToken = await getInstallationToken();
-          tokenAcquiredAt = Date.now();
           ctx.ui.setStatus("gh-bot", "🤖 bot");
           ctx.ui.notify("GitHub: bot (App)");
           pi.appendEntry("gh-bot", { enabled: true });
@@ -90,7 +61,6 @@ export default function ghBotExtension(pi: ExtensionAPI) {
         }
       } else {
         botToken = null;
-        tokenAcquiredAt = null;
         clearTokenCache();
         ctx.ui.setStatus("gh-bot", undefined);
         ctx.ui.notify("GitHub: you (gh CLI)");
@@ -160,9 +130,7 @@ export default function ghBotExtension(pi: ExtensionAPI) {
 
     if (lastState?.data?.enabled) {
       try {
-        clearTokenCache();
         botToken = await getInstallationToken();
-        tokenAcquiredAt = Date.now();
         ctx.ui.setStatus("gh-bot", "🤖 bot");
       } catch {
         // Silent fail on restore - user can re-enable manually

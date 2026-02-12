@@ -26,13 +26,14 @@
  *
  * Commands:
  *   /gh-bot [on|off]     - Toggle bot identity for GitHub operations
+ *   /gh-bot-setup        - Configure GitHub App credentials (appId, installationId, private key)
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { getInstallationToken, clearTokenCache } from "./auth.js";
-import { readConfig } from "./config.js";
+import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 
 // --- State ---
 
@@ -228,6 +229,57 @@ export default function ghBotExtension(pi: ExtensionAPI) {
       ctx.ui.notify(`GitHub: ${useBotAuth ? "bot (App)" : "you (gh CLI)"}`);
 
       pi.appendEntry("gh-bot", { enabled: useBotAuth });
+    },
+  });
+
+  // Setup command
+  pi.registerCommand("gh-bot-setup", {
+    description: "Configure GitHub App credentials for bot mode",
+    handler: async (_args, ctx) => {
+      ctx.ui.notify("GitHub App Setup", "info");
+
+      // App ID
+      const appIdStr = await ctx.ui.input("App ID:", "");
+      if (!appIdStr) {
+        ctx.ui.notify("Setup cancelled", "warning");
+        return;
+      }
+      const appId = parseInt(appIdStr, 10);
+      if (isNaN(appId) || appId <= 0) {
+        ctx.ui.notify("Invalid App ID (must be a positive number)", "error");
+        return;
+      }
+
+      // Installation ID
+      const installIdStr = await ctx.ui.input("Installation ID:", "");
+      if (!installIdStr) {
+        ctx.ui.notify("Setup cancelled", "warning");
+        return;
+      }
+      const installationId = parseInt(installIdStr, 10);
+      if (isNaN(installationId) || installationId <= 0) {
+        ctx.ui.notify("Invalid Installation ID (must be a positive number)", "error");
+        return;
+      }
+
+      // Private key (multi-line PEM)
+      const privateKey = await ctx.ui.editor(
+        "Paste your GitHub App private key (PEM format):",
+        ""
+      );
+      if (!privateKey || !privateKey.includes("-----BEGIN")) {
+        ctx.ui.notify("Invalid or empty private key", "error");
+        return;
+      }
+
+      // Store credentials
+      try {
+        await writeConfig({ appId, installationId });
+        await setPrivateKey(privateKey);
+        ctx.ui.notify("GitHub App configured successfully! Use /gh-bot on to enable.", "info");
+      } catch (err) {
+        ctx.ui.notify(`Failed to save config: ${err}`, "error");
+      }
     },
   });
 

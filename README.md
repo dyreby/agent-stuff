@@ -14,16 +14,17 @@ The end goal: agent behavior aligned with my expectations, captured in skills.
 
 ## How
 
-When I mention `@dyreby-agent` in an issue or PR, a GitHub Action invokes `pi` with the issue or PR number. The agent reads the thread, finds my directive, and executes it—posting responses as the bot.
+I invoke the agent manually via GitHub Actions → "Roger Roger" workflow dispatch. I enter an issue or PR number and a prompt. The workflow posts a comment recording the prompt, then invokes `pi` with the issue or PR number. The agent reads the thread and executes the prompt—posting responses as the bot.
 
+Example prompts:
 ```
-@dyreby-agent plan how to resolve this
-@dyreby-agent create a pr for this
-@dyreby-agent review the pr
-@dyreby-agent address the feedback
+plan how to resolve this
+create a pr for this
+review the pr
+address the feedback
 ```
 
-Others can comment and review code. Those become context the agent sees when my mention triggers action.
+Others can comment and review code. Those become context the agent sees when I trigger it.
 
 ## Skills
 

@@ -1,40 +1,28 @@
 name: Roger Roger
 
-# Trigger on issue/PR activity that might contain a directive
 on:
-  issue_comment:
-    types: [created]
-  issues:
-    types: [opened]
-  pull_request_review:
-    types: [submitted]
-  pull_request_review_comment:
-    types: [created]
-
-concurrency:
-  group: bot
-  cancel-in-progress: false
+  workflow_dispatch:
+    inputs:
+      number:
+        description: "PR or Issue number"
+        type: string
+        required: true
+      prompt:
+        description: "What should the agent do?"
+        type: string
+        required: true
 
 jobs:
   respond:
     runs-on: ubuntu-latest
-
-    # Gate: only run when human creates content mentioning @agent
-    #
-    # Each event type stores user and body in different locations:
-    #   issue_comment             → comment.user.login, comment.body
-    #   issues                    → issue.user.login, issue.body
-    #   pull_request_review       → review.user.login, review.body
-    #   pull_request_review_comment → comment.user.login, comment.body
-    #
-    # This condition is evaluated before a runner starts (efficient).
-    if: |
-      (github.event_name == 'issue_comment' && github.event.comment.user.login == vars.GH_BOT_HUMAN && contains(github.event.comment.body, format('@{0}', vars.GH_BOT_AGENT))) ||
-      (github.event_name == 'issues' && github.event.issue.user.login == vars.GH_BOT_HUMAN && contains(github.event.issue.body, format('@{0}', vars.GH_BOT_AGENT))) ||
-      (github.event_name == 'pull_request_review' && github.event.review.user.login == vars.GH_BOT_HUMAN && contains(github.event.review.body, format('@{0}', vars.GH_BOT_AGENT))) ||
-      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login == vars.GH_BOT_HUMAN && contains(github.event.comment.body, format('@{0}', vars.GH_BOT_AGENT)))
-
     steps:
+      - name: Record prompt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ inputs.number }} \
+            --body "> **@${{ vars.GH_BOT_HUMAN }}** (manual): ${{ inputs.prompt }}"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -43,18 +31,6 @@ jobs:
         with:
           path: ~/.npm
           key: npm-pi-v1
-
-      - name: Determine context
-        id: context
-        run: |
-          if [ -n "${{ github.event.issue.number }}" ]; then
-            NUM="${{ github.event.issue.number }}"
-            [[ -n "${{ github.event.issue.pull_request }}" ]] && PREFIX="pr" || PREFIX="issue"
-          else
-            NUM="${{ github.event.pull_request.number }}"
-            PREFIX="pr"
-          fi
-          echo "prompt=respond to $PREFIX #$NUM" >> "$GITHUB_OUTPUT"
 
       - name: Run pi
         env:
@@ -65,7 +41,9 @@ jobs:
           GH_BOT_HUMAN: ${{ vars.GH_BOT_HUMAN }}
           GH_BOT_AGENT: ${{ vars.GH_BOT_AGENT }}
         run: |
-          npx @mariozechner/pi-coding-agent@latest -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}" 2>&1 | tee /tmp/pi-output.log
+          npx @mariozechner/pi-coding-agent@latest \
+            -e ./pi-extensions/gh-bot \
+            -p "respond to #${{ inputs.number }}" 2>&1 | tee /tmp/pi-output.log
 
       - name: Cost summary
         run: |

@@ -16,15 +16,15 @@ jobs:
   respond:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Record prompt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue comment ${{ inputs.number }} \
             --body "> **@${{ vars.GH_BOT_HUMAN }}** (manual): ${{ inputs.prompt }}"
-
-      - name: Checkout
-        uses: actions/checkout@v4
 
       - name: Cache npm
         uses: actions/cache@v4

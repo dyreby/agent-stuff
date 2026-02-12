@@ -78,7 +78,7 @@ export async function getPrivateKey(): Promise<string | null> {
       "-a", KEYCHAIN_ACCOUNT,
       "-w",
     ]);
-    return stdout.trimEnd();
+    return Buffer.from(stdout.trimEnd(), "base64").toString("utf-8");
   } catch {
     // Key not found or security command failed
     return null;
@@ -87,13 +87,15 @@ export async function getPrivateKey(): Promise<string | null> {
 
 /**
  * Store the private key in macOS Keychain. Updates if already exists.
+ * Key is base64-encoded to avoid macOS Keychain hex-encoding multi-line values.
  */
 export async function setPrivateKey(privateKey: string): Promise<void> {
+  const encoded = Buffer.from(privateKey, "utf-8").toString("base64");
   await execFileAsync("security", [
     "add-generic-password",
     "-s", KEYCHAIN_SERVICE,
     "-a", KEYCHAIN_ACCOUNT,
-    "-w", privateKey,
+    "-w", encoded,
     "-U", // Update if exists
   ]);
 }

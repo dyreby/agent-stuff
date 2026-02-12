@@ -6,7 +6,7 @@
  * When --gh-agent is enabled, you're talking to an agent whose entire view of
  * the world is GitHub: issues, PRs, comments, and code. It can read and respond
  * to conversations, review diffs, and create PRs — but only through the GitHub
- * API. All GitHub operations go through a configured GitHub App (see --setup-app).
+ * API. All GitHub operations go through a configured GitHub App (see --gh-agent-setup).
  *
  * Without --gh-agent, this extension is invisible and registers no tools.
  *
@@ -223,7 +223,7 @@ async function gh(
   if (!token) {
     return {
       stdout: "",
-      stderr: "GitHub App not configured. Run setup first.",
+      stderr: "GitHub App not configured. Run with --gh-agent-setup first.",
       code: 1,
     };
   }
@@ -286,7 +286,7 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
     default: false,
   });
 
-  // In regular mode, the extension is invisible
+  // Without --gh-agent, no tools registered, no event handlers attached
   if (!pi.getFlag("gh-agent")) {
     return;
   }

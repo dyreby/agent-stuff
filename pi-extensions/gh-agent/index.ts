@@ -9,7 +9,7 @@
  * through the GitHub API.
  *
  * By default, the agent uses your `gh` CLI credentials (from `gh auth login`).
- * Set GH_AGENT_TOKEN to use a different GitHub account instead.
+ * In --gh-only mode, it requires a configured GitHub App (see --setup-app).
  *
  * Usage:
  *   pi -e ./pi-extensions/gh-agent.ts           # Default: local + GitHub tools
@@ -48,6 +48,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { getInstallationToken, clearTokenCache } from "./auth.js";
 
 // --- Schemas ---
 
@@ -207,26 +208,30 @@ function ghResultText(result: ExecResult, text: string, details?: Record<string,
   return { content: [{ type: "text", text }], details };
 }
 
-// Cached token (resolved once per session)
-let cachedToken: string | null = null;
+// Cached token for default mode (gh auth token)
+let cachedGhCliToken: string | null = null;
 
 async function getToken(pi: ExtensionAPI): Promise<string | null> {
-  if (cachedToken) return cachedToken;
-
-  // Explicit token takes precedence (for using a different account)
-  if (process.env.GH_AGENT_TOKEN) {
-    cachedToken = process.env.GH_AGENT_TOKEN;
-    return cachedToken;
+  // --gh-only mode requires GitHub App authentication
+  if (pi.getFlag("gh-only")) {
+    // getInstallationToken() handles its own caching with auto-refresh
+    return await getInstallationToken();
   }
 
-  // Fall back to gh CLI's stored credentials
+  // Default mode: use gh CLI's stored credentials
+  if (cachedGhCliToken) return cachedGhCliToken;
+
   const result = await pi.exec("gh", ["auth", "token"]);
   if (result.code === 0 && result.stdout.trim()) {
-    cachedToken = result.stdout.trim();
-    return cachedToken;
+    cachedGhCliToken = result.stdout.trim();
+    return cachedGhCliToken;
   }
 
   return null;
+}
+
+function isAuthError(stderr: string): boolean {
+  return /401|Bad credentials|authentication|unauthorized/i.test(stderr);
 }
 
 async function gh(
@@ -238,15 +243,29 @@ async function gh(
   if (!token) {
     return {
       stdout: "",
-      stderr: "No GitHub credentials found. Run `gh auth login` or set GH_AGENT_TOKEN.",
+      stderr: "No GitHub credentials found. Run `gh auth login` or configure GitHub App.",
       code: 1,
     };
   }
 
-  return pi.exec("gh", args, {
+  const result = await pi.exec("gh", args, {
     signal,
     env: { ...process.env, GH_TOKEN: token },
   });
+
+  // Retry once on auth error (token may have expired)
+  if (result.code !== 0 && isAuthError(result.stderr) && pi.getFlag("gh-only")) {
+    clearTokenCache();
+    const newToken = await getToken(pi);
+    if (newToken && newToken !== token) {
+      return pi.exec("gh", args, {
+        signal,
+        env: { ...process.env, GH_TOKEN: newToken },
+      });
+    }
+  }
+
+  return result;
 }
 
 // --- Sandbox Helpers ---

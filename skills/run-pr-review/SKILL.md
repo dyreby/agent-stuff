@@ -1,7 +1,7 @@
 ---
 name: run-pr-review
 description: Respond to PR review comments.
-min-effort: 0
+min-effort: 1
 ---
 
 Assumes skill: prefs-git

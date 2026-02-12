@@ -28,6 +28,12 @@ Agent files live in `~/repos/dyreby/agent-stuff`.
 6. Propose: minimal change, explain placement
 7. Apply: make the change
 
+## Applying changes
+
+- Never commit directly to main
+- Create a PR for fixes and improvements
+- Create an issue for quick captures or larger proposals
+
 ## Guidelines
 
 - Evaluate options against the Aim above; prefer wording that better aligns agent behavior with user expectations

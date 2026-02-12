@@ -68,7 +68,6 @@ jobs:
           npx @mariozechner/pi-coding-agent@latest -e ./pi-extensions/gh-bot -p "${{ steps.context.outputs.prompt }}" 2>&1 | tee /tmp/pi-output.log
 
       - name: Cost summary
-        if: always()
         run: |
           echo "## 💰 Cost Summary" >> $GITHUB_STEP_SUMMARY
           grep -iE "(token|cost|input|output|cache|\\\$[0-9])" /tmp/pi-output.log >> $GITHUB_STEP_SUMMARY || echo "No cost data found" >> $GITHUB_STEP_SUMMARY

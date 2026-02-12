@@ -25,7 +25,7 @@ import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 
 let botToken: string | null = null;
 
-const BOT_SYSTEM_PROMPT = "gh 401 errors: run `/gh-bot on` to refresh token";
+const BOT_SYSTEM_PROMPT_SNIPPET = "\n\ngh auth errors: run `/gh-bot on` to refresh token";
 
 // --- Extension ---
 
@@ -39,6 +39,13 @@ export default function ghBotExtension(pi: ExtensionAPI) {
     }),
   });
   pi.registerTool(bashTool);
+
+  // Inject system prompt hint when bot mode is active
+  pi.on("before_agent_start", async (event) => {
+    if (botToken) {
+      return { systemPrompt: event.systemPrompt + BOT_SYSTEM_PROMPT_SNIPPET };
+    }
+  });
 
   // Toggle command
   pi.registerCommand("gh-bot", {
@@ -56,7 +63,6 @@ export default function ghBotExtension(pi: ExtensionAPI) {
         try {
           clearTokenCache();
           botToken = await getInstallationToken();
-          pi.setSystemPrompt("gh-bot", BOT_SYSTEM_PROMPT);
           ctx.ui.setStatus("gh-bot", "🤖 bot");
           ctx.ui.notify("GitHub: bot (App)");
           pi.appendEntry("gh-bot", { enabled: true });
@@ -66,7 +72,6 @@ export default function ghBotExtension(pi: ExtensionAPI) {
       } else {
         botToken = null;
         clearTokenCache();
-        pi.setSystemPrompt("gh-bot", undefined);
         ctx.ui.setStatus("gh-bot", undefined);
         ctx.ui.notify("GitHub: you (gh CLI)");
         pi.appendEntry("gh-bot", { enabled: false });
@@ -136,7 +141,6 @@ export default function ghBotExtension(pi: ExtensionAPI) {
     if (lastState?.data?.enabled) {
       try {
         botToken = await getInstallationToken();
-        pi.setSystemPrompt("gh-bot", BOT_SYSTEM_PROMPT);
         ctx.ui.setStatus("gh-bot", "🤖 bot");
       } catch {
         // Silent fail on restore - user can re-enable manually

@@ -1,6 +1,7 @@
 ---
 name: prefs-bot
-description: Bot-mode preferences and identity. Use when operating as the bot account.
+description: Bot-mode preferences and identity. Loaded by gh-bot extension.
+disable-model-invocation: true
 ---
 
 ## Identity

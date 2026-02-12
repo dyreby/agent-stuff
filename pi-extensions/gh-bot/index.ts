@@ -18,6 +18,9 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createBashTool } from "@mariozechner/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { getInstallationToken, clearTokenCache } from "./auth.js";
 import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 
@@ -26,6 +29,15 @@ import { readConfig, writeConfig, setPrivateKey } from "./config.js";
 let botToken: string | null = null;
 
 const BOT_SYSTEM_PROMPT_SNIPPET = "\n\ngh auth errors: run `/gh-bot on` to refresh token";
+
+// Load prefs-bot skill content once at startup
+const PREFS_BOT_PATH = join(homedir(), ".pi/agent/skills/prefs-bot/SKILL.md");
+let prefsBotContent: string | null = null;
+try {
+  prefsBotContent = readFileSync(PREFS_BOT_PATH, "utf-8");
+} catch {
+  // Skill not found - will skip injection
+}
 
 // --- Extension ---
 
@@ -40,10 +52,14 @@ export default function ghBotExtension(pi: ExtensionAPI) {
   });
   pi.registerTool(bashTool);
 
-  // Inject system prompt hint when bot mode is active
+  // Inject bot mode content into system prompt when active
   pi.on("before_agent_start", async (event) => {
     if (botToken) {
-      return { systemPrompt: event.systemPrompt + BOT_SYSTEM_PROMPT_SNIPPET };
+      let additions = BOT_SYSTEM_PROMPT_SNIPPET;
+      if (prefsBotContent) {
+        additions += "\n\n" + prefsBotContent;
+      }
+      return { systemPrompt: event.systemPrompt + additions };
     }
   });
 

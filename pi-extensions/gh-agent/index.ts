@@ -287,12 +287,12 @@ export default function ghAgentExtension(pi: ExtensionAPI) {
     default: false,
   });
 
-  // Without --gh-agent, no tools registered, no event handlers attached
-  if (!pi.getFlag("gh-agent")) {
-    return;
-  }
-
   pi.on("session_start", async (_event, ctx) => {
+    // Without --gh-agent, extension stays inactive
+    if (!pi.getFlag("gh-agent")) {
+      return;
+    }
+
     pi.setActiveTools([
       "gh_issue_list", "gh_issue_read", "gh_issue_comment", "gh_issue_create",
       "gh_pr_list", "gh_pr_read", "gh_pr_diff", "gh_pr_create", "gh_pr_comment",

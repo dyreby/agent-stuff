@@ -13,18 +13,16 @@ Assumes skill: prefs-coding, prefs-code-review, prefs-git
 ## Procedure
 
 1. If PR not specified, ask which PR
-2. Determine role: **reviewer** or **author** responding to feedback
+2. Determine role: reviewer or author
 
-### Reviewer
-
+If reviewer:
 1. Gather context: diff, description, linked issues, prior review state
 2. Analyze: apply rubric from prefs-code-review
 3. Propose action: summarize findings and recommend next steps
    - Scale detail to PR complexity and linked issues
    - For bot-authored PRs: leave review as comment, request user review
 
-### Author (responding to feedback)
-
+If author:
 1. Ask: address all comments or specific ones?
 2. Read review threads and identify actionable items
 3. Check branch state: ensure on correct branch, pull latest

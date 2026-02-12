@@ -22,6 +22,10 @@ description: Git preferences including commit message format. Use when working w
 - Verify claims against the diff; comments may be stale from development history
 - Use professional tone; avoid casual shorthand (LGTM) and emoji
 
+## Assumes skill
+
+- run-improve-agent: when reviewing repos with agent guidance artifacts (skills/, AGENTS.md)
+
 ## Confirmation Required
 
 Show command/content and confirm before externally-visible actions:

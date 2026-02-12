@@ -2,7 +2,7 @@
  * Config & Keychain helpers for GitHub App authentication
  *
  * Provides storage layer for GitHub App credentials:
- * - Config file at ~/.config/gh-agent/config.json (appId, installationId)
+ * - Config file at ~/.config/gh-bot/config.json (appId, installationId)
  * - Private key in macOS Keychain via `security` CLI
  *
  * macOS only. Windows/Linux support can be added later with native credential stores.
@@ -18,18 +18,18 @@ const execFileAsync = promisify(execFile);
 
 // --- Types ---
 
-export interface GhAgentConfig {
+export interface GhBotConfig {
   appId: number;
   installationId?: number;
 }
 
 // --- Paths ---
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "gh-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "gh-bot");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 
 // Keychain identifiers
-const KEYCHAIN_SERVICE = "gh-agent";
+const KEYCHAIN_SERVICE = "gh-bot";
 const KEYCHAIN_ACCOUNT = "private-key";
 
 // --- Config File Helpers ---
@@ -37,7 +37,7 @@ const KEYCHAIN_ACCOUNT = "private-key";
 /**
  * Read the config file. Returns null if file doesn't exist or is invalid.
  */
-export async function readConfig(): Promise<GhAgentConfig | null> {
+export async function readConfig(): Promise<GhBotConfig | null> {
   try {
     const content = await fs.readFile(CONFIG_FILE, "utf-8");
     const parsed = JSON.parse(content);
@@ -60,7 +60,7 @@ export async function readConfig(): Promise<GhAgentConfig | null> {
 /**
  * Write the config file. Creates directory if missing.
  */
-export async function writeConfig(config: GhAgentConfig): Promise<void> {
+export async function writeConfig(config: GhBotConfig): Promise<void> {
   await fs.mkdir(CONFIG_DIR, { recursive: true });
   await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }

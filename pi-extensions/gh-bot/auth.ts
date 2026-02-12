@@ -51,15 +51,15 @@ interface TokenResponse {
 async function fetchInstallationToken(): Promise<string> {
   const config = await readConfig();
   if (!config) {
-    throw new Error("GitHub App not configured. Run setup first.");
+    throw new Error("GitHub App not configured. Run /gh-bot-setup first.");
   }
   if (!config.installationId) {
-    throw new Error("Installation ID not configured. Run setup first.");
+    throw new Error("Installation ID not configured. Run /gh-bot-setup first.");
   }
 
   const privateKey = await getPrivateKey();
   if (!privateKey) {
-    throw new Error("Private key not found in Keychain. Run setup first.");
+    throw new Error("Private key not found in Keychain. Run /gh-bot-setup first.");
   }
 
   const jwt = createJwt(config.appId, privateKey);

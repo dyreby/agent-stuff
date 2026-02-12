@@ -3,10 +3,11 @@
  *
  * An agent that only sees the world through GitHub.
  *
- * When --gh-agent is enabled, you're talking to an agent whose entire view of
- * the world is GitHub: issues, PRs, comments, and code. It can read and respond
- * to conversations, review diffs, and create PRs — but only through the GitHub
- * API. All GitHub operations go through a configured GitHub App (see --gh-agent-setup).
+ * When --gh-agent is enabled, you're talking to an agent whose entire view of the
+ * world is GitHub: issues, PRs, comments, and code. It can read and respond to
+ * conversations, review diffs, and create PRs — but only through the GitHub API.
+ *
+ * All GitHub operations go through a configured GitHub App (see --gh-agent-setup).
  *
  * Without --gh-agent, this extension is invisible and registers no tools.
  *

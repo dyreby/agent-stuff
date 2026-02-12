@@ -15,3 +15,5 @@ Use skills listed in "Assumes skill" declarations.
 Confirm before externally-visible or hard-to-revert actions. Show exact commands first.
 
 Examples: pushing, publishing, deploying, or any action that affects the outside world.
+
+Load prefs-git before any git or gh CLI operations.

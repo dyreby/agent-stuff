@@ -16,7 +16,6 @@
  */
 
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -61,19 +60,19 @@ export default function skillModelExtension(pi: ExtensionAPI) {
   let maxEffort = -1; // -1 = no run-* skill loaded yet
   let applied = false;
 
-  async function applyEffort(effort: number, ctx: { ui: { notify: (msg: string, level: string) => void } }) {
+  async function applyEffort(effort: number, ctx: { ui: { notify: (msg: string, level: string) => void }; modelRegistry: { find: (provider: string, substring: string) => unknown } }) {
     const mapping = EFFORT_MAP[effort];
     if (!mapping) return;
 
     // Find and set model
-    const model = (ctx as any).modelRegistry?.find(mapping.provider, mapping.modelSubstring);
+    const model = ctx.modelRegistry.find(mapping.provider, mapping.modelSubstring);
     if (model) {
       await pi.setModel(model);
     }
 
     pi.setThinkingLevel(mapping.thinking);
     ctx.ui.notify(
-      `skill-model: effort ${effort} → ${mapping.modelSubstring}, thinking ${mapping.thinking}`,
+      `effort-aware: level ${effort} → ${mapping.modelSubstring}, thinking ${mapping.thinking}`,
       "info"
     );
     applied = true;
@@ -82,13 +81,20 @@ export default function skillModelExtension(pi: ExtensionAPI) {
   // Detect /skill:run-* commands and read their frontmatter
   pi.on("input", async (event) => {
     const matches = event.text.matchAll(/\/skill:([a-z0-9-]+)/g);
+    const commands = pi.getCommands();
+
     for (const match of matches) {
       const skillName = match[1];
       if (!skillName.startsWith("run-")) continue;
 
+      // Find the skill's actual path via pi.getCommands()
+      const skillCmd = commands.find(
+        (cmd) => cmd.source === "skill" && cmd.name === `skill:${skillName}`
+      );
+      if (!skillCmd?.path) continue;
+
       try {
-        const skillPath = path.join("skills", skillName, "SKILL.md");
-        const content = await fs.readFile(skillPath, "utf-8");
+        const content = await fs.readFile(skillCmd.path, "utf-8");
         const effort = getMinEffort(content);
         if (effort != null && effort > maxEffort) {
           maxEffort = effort;
@@ -100,14 +106,14 @@ export default function skillModelExtension(pi: ExtensionAPI) {
     return { action: "continue" as const };
   });
 
-  // Detect auto-loaded skills via file reads of skills/run-*/SKILL.md
+  // Detect auto-loaded skills via file reads of .../run-*/SKILL.md
   pi.on("tool_result", async (event, ctx) => {
-    if (event.toolName !== "read") return;
+    if (event.toolName !== "Read") return;
     const input = event.input as { path?: string };
     if (!input.path) return;
 
-    // Match skills/run-*/SKILL.md
-    const match = input.path.match(/skills\/(run-[a-z0-9-]+)\/SKILL\.md/);
+    // Match any path ending with /run-*/SKILL.md (handles both system and local skills)
+    const match = input.path.match(/\/(run-[a-z0-9-]+)\/SKILL\.md$/);
     if (!match) return;
 
     try {

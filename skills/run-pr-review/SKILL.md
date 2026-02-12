@@ -31,5 +31,5 @@ Assumes skill: prefs-coding, prefs-code-review, prefs-git
 4. Make changes — batch simple fixes, go comment-by-comment when tradeoffs need user input
 5. Iterate with user to match expectations
 6. Commit and push (with confirmation per prefs-git)
-7. Reply to comments, referencing the addressing commit
+7. Reply to comments, referencing the addressing commit — keep tone professional and approachable
 8. When all comments addressed: re-request review if needed

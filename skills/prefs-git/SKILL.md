@@ -32,12 +32,14 @@ description: Git preferences including commit message format. Use when working w
 
 ## Confirmation Required
 
-Show command/content and confirm before externally-visible or hard-to-revert actions:
+Show the literal command and confirm before externally-visible or hard-to-revert actions.
 
 CLI:
 - git push (especially --force)
+- gh repo edit (enables features, changes settings)
 - gh issue create, gh issue comment, gh issue close
 - gh pr create, gh pr merge, gh pr close, gh pr comment, gh pr review
+- gh api with mutations (POST, PUT, DELETE, PATCH, GraphQL mutations)
 
 gh-agent tools:
 - gh_issue_create, gh_issue_comment
